@@ -9,7 +9,7 @@ from sqlalchemy.orm import sessionmaker
 
 app = Flask(__name__)
 
-# Load default configuration from config.json
+# Load default configuration from config.json or environment variables
 DEFAULT_CONFIG = {}
 try:
     if os.path.exists('config.json'):
@@ -17,9 +17,38 @@ try:
             DEFAULT_CONFIG = json.load(f)
         logging.info("Default configuration loaded from config.json")
     else:
-        logging.warning("config.json not found, using empty defaults")
+        logging.info("config.json not found, using environment variables")
+        
+    # Override with environment variables if present (for containerized deployment)
+    env_config = {
+        "database": {
+            "url": os.getenv('DATABASE_URL', DEFAULT_CONFIG.get("database", {}).get("url", "")),
+            "schema": os.getenv('DATABASE_SCHEMA', DEFAULT_CONFIG.get("database", {}).get("schema", ""))
+        },
+        "api": {
+            "base_url": os.getenv('API_BASE_URL', DEFAULT_CONFIG.get("api", {}).get("base_url", "")),
+            "api_key": os.getenv('API_KEY', DEFAULT_CONFIG.get("api", {}).get("api_key", "")),
+            "deployment_id": os.getenv('API_DEPLOYMENT_ID', DEFAULT_CONFIG.get("api", {}).get("deployment_id", "model-router")),
+            "api_version": os.getenv('API_VERSION', DEFAULT_CONFIG.get("api", {}).get("api_version", "2025-01-01-preview")),
+            "prompt_template": os.getenv('API_PROMPT_TEMPLATE', DEFAULT_CONFIG.get("api", {}).get("prompt_template", "Analyze this database schema: {schema_summary}")),
+            "max_tokens": int(os.getenv('API_MAX_TOKENS', DEFAULT_CONFIG.get("api", {}).get("max_tokens", 8192))),
+            "temperature": float(os.getenv('API_TEMPERATURE', DEFAULT_CONFIG.get("api", {}).get("temperature", 0.7))),
+            "top_p": float(os.getenv('API_TOP_P', DEFAULT_CONFIG.get("api", {}).get("top_p", 0.95))),
+            "frequency_penalty": float(os.getenv('API_FREQUENCY_PENALTY', DEFAULT_CONFIG.get("api", {}).get("frequency_penalty", 0))),
+            "presence_penalty": float(os.getenv('API_PRESENCE_PENALTY', DEFAULT_CONFIG.get("api", {}).get("presence_penalty", 0))),
+            "model": os.getenv('API_MODEL', DEFAULT_CONFIG.get("api", {}).get("model", "model-router")),
+            "timeout": float(os.getenv('API_TIMEOUT', DEFAULT_CONFIG.get("api", {}).get("timeout", 60.0))),
+            "max_retries": int(os.getenv('API_MAX_RETRIES', DEFAULT_CONFIG.get("api", {}).get("max_retries", 3)))
+        }
+    }
+    
+    # Use environment config if any environment variables are set
+    if any([os.getenv('DATABASE_URL'), os.getenv('API_BASE_URL'), os.getenv('API_KEY')]):
+        DEFAULT_CONFIG = env_config
+        logging.info("Configuration loaded from environment variables")
+        
 except Exception as e:
-    logging.error(f"Error loading config.json: {e}")
+    logging.error(f"Error loading configuration: {e}")
     DEFAULT_CONFIG = {}
 
 # Configure logging
@@ -566,4 +595,6 @@ def health_check():
     })
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    # Use PORT environment variable for cloud deployment, default to 5000
+    port = int(os.getenv('PORT', 5000))
+    app.run(debug=False, host='0.0.0.0', port=port)
