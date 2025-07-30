@@ -1,0 +1,19 @@
+# Core dependencies
+flask
+httpx
+sqlalchemy
+
+# Database drivers
+# PostgreSQL
+psycopg2-binary
+
+# MySQL/MariaDB
+pymysql
+
+# Microsoft SQL Server
+pyodbc
+
+# Oracle (uncomment if needed)
+# cx_oracle
+
+# SQLite is included with Python by default
