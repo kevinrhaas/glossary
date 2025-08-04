@@ -125,8 +125,8 @@ if [ "${DEPLOYMENT_TYPE}" = "ecs" ]; then
     echo "========================================="
     echo "Step 5: Cleaning up old services"
     echo "========================================="
-    chmod +x deploy/05-cleanup-old-services.sh
-    ./deploy/05-cleanup-old-services.sh
+    chmod +x deploy/cleanup-old-services.sh
+    ./deploy/cleanup-old-services.sh
   fi
 fi
 

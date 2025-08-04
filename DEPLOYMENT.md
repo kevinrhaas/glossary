@@ -10,7 +10,7 @@ cp .env.example .env
 # Edit .env with your values
 
 # 2. Run full deployment pipeline
-./deploy/deploy-full.sh
+./deploy/99-deploy-full.sh
 ```
 
 This runs a complete, tested deployment process with safety checks and rollback capability.

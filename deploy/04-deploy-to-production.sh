@@ -15,7 +15,7 @@ echo ""
 # Safety check - recommend testing first
 if [ ! -f deploy/deployment-info-test.env ] && [ ! -f deploy/apprunner-deployment-info-test.env ]; then
   echo "⚠️  No test deployment found."
-  echo "💡 Consider testing first with: ./deploy/deploy-to-test.sh"
+  echo "💡 Consider testing first with: ./deploy/04-deploy-to-test.sh"
   echo ""
 fi
 

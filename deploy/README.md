@@ -4,52 +4,6 @@ This directory contains bulletproof deployment scripts for the Database Schema G
 
 ## 🚀 Quick Start - Environment-Aware Deployment
 
-### 🧪 Test First, Then Production
-
-**Recommended Workflow:**
-```bash
-# 1. Deploy to test environment first
-./deploy/deploy-to-test.sh
-
-# 2. Test your application thoroughly
-
-# 3. Deploy to production when ready
-./deploy/deploy-to-production.sh
-```
-
-### 🎯 Environment Options
-
-**Test Environment:**
-- ECS Service: `glossary-service-test`
-- App Runner: `glossary-apprunner-test`
-- Safe for experimentation
-
-**Production Environment:**
-- ECS Service: `glossary-service`
-- App Runner: `glossary-apprunner`
-- Live user-facing services
-
-### 📋 Manual Deployment (Advanced)
-
-```bash
-# Direct deployment with environment parameter
-./deploy/03-deploy-to-ecs.sh [environment]
-./deploy/03-deploy-to-apprunner.sh [environment]
-
-# Valid environments: production, test
-```
-
-## 🔧 Setup
-
-```bash
-# 1. Set up your environment
-cp .env.example .env
-# Edit .env with your actual values
-
-# 2. Run the full deployment pipeline (production)
-./deploy/deploy-full.sh
-```
-
 ## Individual Scripts
 
 ### 1. Build and Test Locally
@@ -97,10 +51,56 @@ cp .env.example .env
 
 ### 5. Cleanup Old Services
 ```bash
-./deploy/05-cleanup-old-services.sh
+./deploy/cleanup-old-services.sh
 ```
 - Safely removes old ECS service after testing
 - Preserves new deployment
+
+**Recommended Workflow:**
+```bash
+# 1. Deploy to test environment first
+./deploy/04-deploy-to-test.sh
+
+# 2. Test your application thoroughly
+
+# 3. Deploy to production when ready
+./deploy/04-deploy-to-production.sh
+```
+
+### 🎯 Environment Options
+
+**Test Environment:**
+- ECS Service: `glossary-service-test`
+- App Runner: `glossary-apprunner-test`
+- Safe for experimentation
+
+**Production Environment:**
+- ECS Service: `glossary-service`
+- App Runner: `glossary-apprunner`
+- Live user-facing services
+
+### 📋 Manual Deployment (Advanced)
+
+```bash
+# Direct deployment with environment parameter
+./deploy/03-deploy-to-ecs.sh [environment]
+./deploy/03-deploy-to-apprunner.sh [environment]
+
+# Valid environments: production, test
+```
+
+## 🔧 Setup
+
+```bash
+# 1. Set up your environment
+cp .env.example .env
+# Edit .env with your actual values
+
+# 2. Run the full deployment pipeline (production)
+./deploy/99-deploy-full.sh
+```
+
+
 
 ## Configuration
 

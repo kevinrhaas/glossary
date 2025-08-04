@@ -5,6 +5,11 @@
 config.json
 config.local.json
 
+# Deployment state files (auto-generated)
+deploy/deployment-info-*.env
+deploy/apprunner-deployment-info-*.env
+deploy/image-info.env
+
 # Python
 __pycache__/
 *.py[cod]
@@ -32,3 +37,6 @@ Thumbs.db
 
 # Archives (old/unused files)
 archive/
+
+# Development notes and process documentation
+dev-notes/
