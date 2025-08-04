@@ -151,22 +151,29 @@ def make_api_call(schema_summary: str, api_config: dict = None) -> dict:
         logger.error("No configuration available")
         return None
     
-    # Use provided API config or load from main config
-    if not api_config:
-        api_config = {
-            'base_url': config.get('api_base_url'),
-            'api_key': config.get('api_key'),
-            'deployment_id': config.get('api_deployment_id', 'model-router'),
-            'api_version': config.get('api_version', '2025-01-01-preview'),
-            'max_tokens': 8192,
-            'temperature': 0.7,
-            'top_p': 0.95,
-            'frequency_penalty': 0,
-            'presence_penalty': 0,
-            'model': 'model-router',
-            'timeout': 60.0,
-            'max_retries': 3
-        }
+    # Start with defaults from environment configuration
+    default_api_config = {
+        'base_url': config.get('api_base_url'),
+        'api_key': config.get('api_key'),
+        'deployment_id': config.get('api_deployment_id', 'model-router'),
+        'api_version': config.get('api_version', '2025-01-01-preview'),
+        'max_tokens': config.get('api_max_tokens', 8192),
+        'temperature': config.get('api_temperature', 0.7),
+        'timeout': config.get('api_timeout', 60.0),
+        'max_retries': config.get('api_max_retries', 3),
+        'top_p': 0.95,
+        'frequency_penalty': 0,
+        'presence_penalty': 0,
+        'model': 'model-router'
+    }
+    
+    # Merge with any provided overrides
+    if api_config:
+        # Update defaults with any provided overrides
+        default_api_config.update(api_config)
+    
+    # Use the merged configuration
+    api_config = default_api_config
     
     base_url = api_config.get('base_url')
     deployment_id = api_config.get('deployment_id', 'model-router')
@@ -365,12 +372,10 @@ def home():
     return jsonify({
         "service": "Database Schema Glossary Generator",
         "status": "running",
-        "version": "v2.0-full-featured",
+        "version": "v2.1-unified-config",
         "endpoints": [
             "/health - Health check with database connectivity",
-            "/env - Environment variables (debug)",
-            "/config - Configuration status",
-            "/defaults - Default configuration values", 
+            "/config - Complete configuration with sources (env vars vs defaults)",
             "/analyze - POST: Generate AI-powered business glossary from database schema",
             "/docs - API documentation"
         ],
@@ -378,71 +383,60 @@ def home():
         "api_configured": bool(config and config.get('api_base_url') and config.get('api_key'))
     })
 
-@app.route('/env')
-def show_env():
-    """Show environment variables (for debugging)"""
-    env_vars = {}
-    for key in ['DATABASE_URL', 'API_BASE_URL', 'API_KEY', 'DATABASE_SCHEMA']:
-        value = os.getenv(key, 'NOT_SET')
-        if 'password' in key.lower() or 'key' in key.lower():
-            env_vars[key] = value[:4] + '***' if len(value) > 4 else '***'
-        else:
-            env_vars[key] = value[:50] + '...' if len(value) > 50 else value
-    
-    return jsonify({
-        "environment_variables": env_vars
-    })
-
 @app.route('/config')
 def show_config():
-    """Show configuration status"""
-    config = load_config()
-    if not config:
-        return jsonify({"error": "Failed to load configuration"}), 500
-    
-    # Sanitize sensitive information
-    safe_config = {}
-    for key, value in config.items():
-        if value is None:
-            safe_config[key] = "NOT_SET"
-        elif 'password' in key.lower() or 'key' in key.lower():
-            safe_config[key] = value[:4] + '***' if len(str(value)) > 4 else '***'
-        elif 'url' in key.lower() and value:
-            safe_config[key] = value[:50] + '...' if len(str(value)) > 50 else value
-        else:
-            safe_config[key] = value
-    
-    return jsonify({
-        "configuration": safe_config,
-        "loaded_from": "environment_variables" if os.getenv('DATABASE_URL') else "config_file"
-    })
-
-@app.route('/defaults')
-def show_defaults():
-    """Show default configuration values and environment variable setup (for API documentation)"""
+    """Show complete configuration with sources and security masking"""
     config = load_config()
     
     if not config:
         return jsonify({
             "error": "Configuration not loaded",
-            "message": "Please check your environment variables",
-            "required_env_vars": [
-                "DATABASE_URL", "API_BASE_URL", "API_KEY"
-            ]
+            "message": "Please check your environment variables or .env file",
+            "required_env_vars": ["DATABASE_URL", "API_BASE_URL", "API_KEY"],
+            "help": "Copy .env.example to .env and fill in your values"
         }), 500
     
-    # Apply masking to sensitive data for security
-    masked_config = {}
+    # Track which values come from environment vs defaults
+    config_with_sources = {}
+    
+    # Check each config value against environment variables
+    env_mapping = {
+        'database_url': 'DATABASE_URL',
+        'database_schema': 'DATABASE_SCHEMA', 
+        'api_base_url': 'API_BASE_URL',
+        'api_key': 'API_KEY',
+        'api_deployment_id': 'API_DEPLOYMENT_ID',
+        'api_version': 'API_VERSION',
+        'api_max_tokens': 'API_MAX_TOKENS',
+        'api_temperature': 'API_TEMPERATURE',
+        'api_timeout': 'API_TIMEOUT',
+        'api_max_retries': 'API_MAX_RETRIES',
+        'api_prompt_template': 'API_PROMPT_TEMPLATE',
+        'port': 'PORT'
+    }
+    
     for key, value in config.items():
+        env_var_name = env_mapping.get(key, key.upper())
+        env_value = os.getenv(env_var_name)
+        
+        # Determine source
+        if env_value is not None:
+            source = "environment_variable"
+            env_var = env_var_name
+        else:
+            source = "default_value"
+            env_var = env_var_name
+        
+        # Apply security masking
         if value is None or value == '':
-            masked_config[key] = "NOT_SET"
+            masked_value = "NOT_SET"
         elif 'password' in key.lower() or 'key' in key.lower():
             if len(str(value)) > 8:
-                masked_config[key] = str(value)[:4] + "***" + str(value)[-4:]
+                masked_value = str(value)[:4] + "***" + str(value)[-4:]
             elif value:
-                masked_config[key] = "***"
+                masked_value = "***"
             else:
-                masked_config[key] = "NOT_SET"
+                masked_value = "NOT_SET"
         elif 'url' in key.lower() and value and "@" in str(value):
             # Special handling for database URLs with credentials
             url_str = str(value)
@@ -454,33 +448,42 @@ def show_defaults():
                     auth_part, host_part = rest.split("@", 1)
                     if ":" in auth_part:
                         user, _ = auth_part.split(":", 1)
-                        masked_config[key] = f"{protocol}://{user}:***@{host_part}"
+                        masked_value = f"{protocol}://{user}:***@{host_part}"
                     else:
-                        masked_config[key] = f"{protocol}://{auth_part}:***@{host_part}"
+                        masked_value = f"{protocol}://{auth_part}:***@{host_part}"
                 else:
-                    masked_config[key] = value
+                    masked_value = value
             else:
-                masked_config[key] = value
+                masked_value = value
         else:
-            masked_config[key] = value
+            masked_value = value
+            
+        config_with_sources[key] = {
+            "value": masked_value,
+            "source": source,
+            "env_var": env_var
+        }
 
     return jsonify({
         "service": "Database Schema Glossary Generator",
-        "version": "v2.0-env-vars",
-        "configuration_source": "environment_variables",
-        "config_count": len(masked_config),
-        "environment_variables": masked_config,
+        "version": "v2.1-unified-config",
+        "configuration": config_with_sources,
+        "summary": {
+            "total_settings": len(config_with_sources),
+            "from_environment": len([c for c in config_with_sources.values() if c["source"] == "environment_variable"]),
+            "using_defaults": len([c for c in config_with_sources.values() if c["source"] == "default_value"])
+        },
         "setup_help": {
-            "required_env_vars": [
-                "DATABASE_URL", "API_BASE_URL", "API_KEY"
-            ],
+            "required_env_vars": ["DATABASE_URL", "API_BASE_URL", "API_KEY"],
             "optional_env_vars": [
                 "DATABASE_SCHEMA", "API_DEPLOYMENT_ID", "API_VERSION",
                 "API_MAX_TOKENS", "API_TEMPERATURE", "API_TIMEOUT", 
                 "API_MAX_RETRIES", "API_PROMPT_TEMPLATE", "PORT"
             ],
-            "example_file": ".env.example"
-        }
+            "local_development": "Copy .env.example to .env and edit with your values",
+            "production": "Set environment variables in your deployment platform"
+        },
+        "note": "Sensitive data (passwords, API keys) are masked with *** for security"
     })
 
 @app.route('/database/tables')
@@ -769,7 +772,7 @@ def documentation():
         <div class="endpoint">
             <h3><span class="method post">POST</span> /analyze</h3>
             <p>Analyzes a database schema and generates a hierarchical business glossary using AI.</p>
-            <p><strong>Note:</strong> Uses environment variables for database and API configuration by default.</p>
+            <p><strong>Note:</strong> All parameters are optional. Environment variables provide defaults, and any request parameters override/merge with those defaults.</p>
             
             <h4>Request Body (JSON) - Optional overrides:</h4>
             <pre>{{
@@ -789,13 +792,13 @@ def documentation():
   }}
 }}</pre>
 
-            <h4>Simple Example Request (use defaults):</h4>
+            <h4>Simple Example Request (use all defaults):</h4>
             <pre>POST /analyze
 Content-Type: application/json
 
 {{}}</pre>
 
-            <h4>Database Override Example:</h4>
+            <h4>Database Override Example (merge with API defaults):</h4>
             <pre>{{
   "database": {{
     "url": "postgresql://user:pass@host:port/dbname?sslmode=require",
@@ -803,7 +806,7 @@ Content-Type: application/json
   }}
 }}</pre>
 
-            <h4>API Override Example:</h4>
+            <h4>API Override Example (merge with database defaults):</h4>
             <pre>{{
   "api": {{
     "temperature": 0.3,

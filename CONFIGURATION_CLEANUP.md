@@ -30,8 +30,10 @@
 - **`config.template.json`**: Reference template (no real credentials)
 - **`CONFIG.md`**: Complete configuration documentation
 
-### Renamed Files  
-- **`config.json`** → **`config.local.json`** (kept for backward compatibility, gitignored)
+### Removed Files
+- **`config.json`** → **Moved to `archive/`** (no longer used)
+- **`config.local.json`** → **Moved to `archive/`** (no longer used)
+- **`config.template.json`** → **Moved to `archive/`** (no longer used)
 
 ## Environment Variables
 

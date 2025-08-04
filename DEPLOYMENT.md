@@ -1,9 +1,25 @@
 # AWS Deployment Guide
 
-This guide covers the most straightforward ways to deploy your Database Schema Glossary Gener# 4. Set environment variables:
-#    - DATABASE_URL=postgresql://user:pass@host:5432/db?sslmode=require
-#    - API_BASE_URL=your-endpoint.azure-api.net/openai-presales
-#    - API_KEY=your-api-key microservice on AWS.
+**🎯 For bulletproof deployment, use the automated deployment scripts in the `deploy/` directory.**
+
+## Quick Deployment
+
+```bash
+# 1. Set up environment
+cp .env.example .env
+# Edit .env with your values
+
+# 2. Run full deployment pipeline
+./deploy/deploy-full.sh
+```
+
+This runs a complete, tested deployment process with safety checks and rollback capability.
+
+See `deploy/README.md` for detailed documentation.
+
+## Manual Deployment Steps
+
+If you prefer manual deployment, follow the individual steps below.
 
 ## Option 1: AWS App Runner (Recommended - Simplest)
 
@@ -297,10 +313,17 @@ For production, set environment variables directly in your deployment platform:
 
 ## Monitoring
 
-Your service includes:
-- `/health` endpoint for health checks
-- Built-in logging
-- CloudWatch integration (when deployed on AWS)
+Your service includes these endpoints:
+- `/health` - Health check with database connectivity
+- `/config` - Complete configuration showing sources (environment variables vs defaults)  
+- `/analyze` - POST endpoint for AI-powered glossary generation
+- `/docs` - API documentation
+
+The `/config` endpoint shows:
+- Which settings come from environment variables vs defaults
+- Masked sensitive values for security  
+- Setup help and required variables
+- Summary of configuration sources
 
 ## Recommendation
 

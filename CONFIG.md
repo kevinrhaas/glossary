@@ -10,10 +10,10 @@ This application follows **12-Factor App** principles for configuration manageme
 - **Security**: Never commit credentials to git
 - **Flexibility**: Different values per environment (dev/staging/prod)
 
-### ❌ Deprecated: config.json
-- The old `config.json` approach has been replaced
-- `config.template.json` provided as reference only
-- Local `config.local.json` is gitignored for backward compatibility
+### ❌ Deprecated: config.json (Removed)
+- The old `config.json` approach has been completely removed
+- All configuration files moved to `archive/` folder
+- Local `config.local.json` no longer needed or used
 
 ## Setup Instructions
 
@@ -87,10 +87,37 @@ Set via console or deployment scripts.
 
 Check your configuration with:
 ```bash
-curl http://localhost:5000/defaults
+curl http://localhost:5000/config
 ```
 
-This shows all loaded configuration (with sensitive values masked).
+This shows:
+- **All loaded configuration** with security masking for sensitive values
+- **Source attribution** - which values come from environment variables vs defaults  
+- **Setup summary** - count of env vars vs defaults being used
+- **Help information** - required and optional environment variables
+
+Example output:
+```json
+{
+  "configuration": {
+    "database_url": {
+      "value": "postgresql://user:***@host/db",
+      "source": "environment_variable", 
+      "env_var": "DATABASE_URL"
+    },
+    "api_max_tokens": {
+      "value": 8192,
+      "source": "default_value",
+      "env_var": "API_MAX_TOKENS"  
+    }
+  },
+  "summary": {
+    "total_settings": 12,
+    "from_environment": 3,
+    "using_defaults": 9
+  }
+}
+```
 
 ## Security Notes
 
