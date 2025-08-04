@@ -1,6 +1,9 @@
 # AWS Deployment Guide
 
-This guide covers the most straightforward ways to deploy your Database Schema Glossary Generator microservice on AWS.
+This guide covers the most straightforward ways to deploy your Database Schema Glossary Gener# 4. Set environment variables:
+#    - DATABASE_URL=postgresql://user:pass@host:5432/db?sslmode=require
+#    - API_BASE_URL=your-endpoint.azure-api.net/openai-presales
+#    - API_KEY=your-api-key microservice on AWS.
 
 ## Option 1: AWS App Runner (Recommended - Simplest)
 
@@ -9,10 +12,90 @@ AWS App Runner is the easiest way to deploy containerized applications.
 ### Prerequisites
 - AWS CLI installed and configured
 - Docker installed locally
+- AWS credentials configured (see AWS Configuration section below)
+
+## AWS Configuration
+
+### Option A: gimme-aws-creds with Okta (Recommended for Hitachi Vantara)
+
+This is the best solution for your Hitachi Vantara Okta setup:
+
+1. **Configure gimme-aws-creds:**
+```bash
+gimme-aws-creds --action-configure
+```
+
+When prompted, enter:
+- **Okta organization URL**: `hitachivantara.okta.com`
+- **Okta username**: `kevin.haas@hitachivantara.com`
+- **Okta app URL**: `https://hitachivantara.okta.com/home/amazon_aws/0oa155ztg8DWyKy732p7/272`
+- **AWS profile name**: `hitachi-vantara` (or your preference)
+
+2. **Get AWS credentials:**
+```bash
+gimme-aws-creds --profile hitachi-vantara
+```
+
+This will prompt for your Okta password and MFA, then automatically set up your AWS credentials.
+
+3. **Test the configuration:**
+```bash
+aws sts get-caller-identity --profile hitachi-vantara
+```
+
+### Option B: Manual Temporary Credentials (Alternative)
+
+If gimme-aws-creds doesn't work:
+
+1. **Get temporary credentials from Okta:**
+   - Go to: `https://hitachivantara.okta.com/home/amazon_aws/0oa155ztg8DWyKy732p7/272`
+   - Click on your AWS account role
+   - Copy the temporary credentials
+
+2. **Set environment variables:**
+```bash
+export AWS_ACCESS_KEY_ID="your-temp-access-key"
+export AWS_SECRET_ACCESS_KEY="your-temp-secret-key" 
+export AWS_SESSION_TOKEN="your-temp-session-token"
+export AWS_DEFAULT_REGION="us-east-1"
+```
+
+### Verify Configuration
+
+```bash
+aws sts get-caller-identity
+```
+
+This should return your account information: `729973546399`
 
 ### Steps
 
 1. **Build and push to ECR:**
+
+**If using AWS SSO/Okta:**
+```bash
+# Login to your SSO session first
+aws sso login --profile default
+
+# Create ECR repository
+aws ecr create-repository --repository-name glossary-generator
+
+# Get your account ID
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+REGION=$(aws configure get region)
+
+# Get login token (works with SSO)
+aws ecr get-login-password --region $REGION | docker login --username AWS --password-stdin $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com
+
+# Build and tag image
+docker build -t glossary-generator .
+docker tag glossary-generator:latest $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/glossary-generator:latest
+
+# Push image
+docker push $ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com/glossary-generator:latest
+```
+
+**If using IAM access keys:**
 ```bash
 # Create ECR repository
 aws ecr create-repository --repository-name glossary-generator
@@ -50,9 +133,10 @@ aws apprunner create-service \
       "ImageConfiguration": {
         "Port": "5000",
         "RuntimeEnvironmentVariables": {
-          "DATABASE_URL": "your-database-url",
-          "API_BASE_URL": "your-api-endpoint",
-          "API_KEY": "your-api-key"
+          "DATABASE_URL": "postgresql://user:pass@host:5432/db?sslmode=require",
+          "API_BASE_URL": "your-endpoint.azure-api.net/openai-presales",
+          "API_KEY": "your-api-key",
+          "DATABASE_SCHEMA": "your-schema-name"
         }
       },
       "ImageRepositoryType": "ECR"
@@ -135,9 +219,10 @@ pip install zappa
     "aws_region": "us-east-1",
     "runtime": "python3.9",
     "environment_variables": {
-      "DATABASE_URL": "your-database-url",
-      "API_BASE_URL": "your-api-endpoint", 
-      "API_KEY": "your-api-key"
+      "DATABASE_URL": "postgresql://user:pass@host:5432/db?sslmode=require",
+      "API_BASE_URL": "your-endpoint.azure-api.net/openai-presales", 
+      "API_KEY": "your-api-key",
+      "DATABASE_SCHEMA": "your-schema-name"
     }
   }
 }
@@ -156,21 +241,47 @@ zappa deploy production
 
 ## Environment Variables
 
-Your application supports these environment variables:
+Your application uses environment variables for all configuration (12-Factor App compliant):
 
-### Required
-- `DATABASE_URL` - Database connection string
-- `API_BASE_URL` - AI API endpoint
-- `API_KEY` - AI API key
+### Required Environment Variables
+- `DATABASE_URL` - PostgreSQL connection string
+- `API_BASE_URL` - AI API endpoint  
+- `API_KEY` - AI API authentication key
 
-### Optional
+### Optional Environment Variables (with defaults)
 - `DATABASE_SCHEMA` - Database schema name
-- `API_DEPLOYMENT_ID` - API deployment ID (default: model-router)
-- `API_VERSION` - API version (default: 2025-01-01-preview)
+- `API_DEPLOYMENT_ID` - API deployment ID (default: "model-router")
+- `API_VERSION` - API version (default: "2025-01-01-preview")
 - `API_MAX_TOKENS` - Max response tokens (default: 8192)
 - `API_TEMPERATURE` - AI temperature (default: 0.7)
+- `API_TIMEOUT` - Request timeout in seconds (default: 60.0)
 - `API_MAX_RETRIES` - Max retry attempts (default: 3)
+- `API_PROMPT_TEMPLATE` - Custom AI prompt template
 - `PORT` - Server port (default: 5000)
+
+### Local Development Setup
+
+1. **Copy the environment template:**
+```bash
+cp .env.example .env
+```
+
+2. **Edit `.env` with your actual values:**
+```bash
+# Example .env file
+DATABASE_URL=postgresql://user:pass@host:5432/dbname?sslmode=require
+DATABASE_SCHEMA=your_schema
+API_BASE_URL=your-endpoint.azure-api.net/openai-presales  
+API_KEY=your-actual-api-key
+```
+
+3. **The app automatically loads `.env` for local development**
+
+### Production Deployment
+
+**Never commit `.env` files or `config.json` files with real credentials to git.**
+
+For production, set environment variables directly in your deployment platform:
 
 ---
 

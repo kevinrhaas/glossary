@@ -2,6 +2,7 @@
 flask
 httpx
 sqlalchemy
+python-dotenv
 
 # Database drivers
 # PostgreSQL

@@ -18,13 +18,17 @@ venv.bak/
 
 # Ignore OS files
 .DS_Store
+
+# Ignore local configuration files (use environment variables in production)
+config.local.json
+config.json
+.env
+.env.local
+.env.production
 Thumbs.db
 
 # Ignore logs
 *.log
-
-# Ignore sensitive config files (you'll set these via environment variables)
-config.json
 
 # Ignore development files
 .pytest_cache/
@@ -33,3 +37,6 @@ htmlcov/
 
 # Ignore Docker files for multi-stage builds
 .dockerignore
+
+# Ignore archive folder
+archive/

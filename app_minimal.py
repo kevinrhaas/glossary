@@ -9,10 +9,6 @@ from datetime import datetime
 import httpx
 from typing import Dict, Any
 import time
-from dotenv import load_dotenv
-
-# Load environment variables from .env file (for local development)
-load_dotenv()
 
 app = Flask(__name__)
 
@@ -29,54 +25,47 @@ _db_engine = None
 _config = None
 
 def load_config():
-    """Load configuration from environment variables with defaults (lazy loading)"""
+    """Load configuration from environment variables or config file (lazy loading)"""
     global _config
     if _config is not None:
         return _config
     
     try:
-        # Load all configuration from environment variables with sensible defaults
+        # Try to load from environment variables first
         _config = {
-            # Database configuration
             'database_url': os.getenv('DATABASE_URL'),
             'database_schema': os.getenv('DATABASE_SCHEMA'),
-            
-            # API configuration
             'api_base_url': os.getenv('API_BASE_URL'),
             'api_key': os.getenv('API_KEY'),
-            'api_deployment_id': os.getenv('API_DEPLOYMENT_ID', 'model-router'),
-            'api_version': os.getenv('API_VERSION', '2025-01-01-preview'),
-            
-            # AI model configuration with defaults
-            'api_max_tokens': int(os.getenv('API_MAX_TOKENS', '8192')),
-            'api_temperature': float(os.getenv('API_TEMPERATURE', '0.7')),
-            'api_timeout': float(os.getenv('API_TIMEOUT', '60.0')),
-            'api_max_retries': int(os.getenv('API_MAX_RETRIES', '3')),
-            
-            # Server configuration
-            'port': int(os.getenv('PORT', '5000')),
-            
-            # AI prompt template
-            'api_prompt_template': os.getenv('API_PROMPT_TEMPLATE', 
-                'Analyze this database schema and create a comprehensive business data glossary. '
-                'Based on the table names, column names, and their relationships, analyze the business at hand, '
-                'and organize the business terms into a hierarchical structure. '
-                'Return ONLY valid JSON in this exact format: '
-                '{{ "Root Glossary Name": [ {{ "Category Under Root": [ "Simple Leaf Term", '
-                '{{ "Parent Leaf Term": [ "Nested Leaf Term" ] }} ] }} ] }}. '
-                'Use meaningful business terms derived from the schema. Schema to analyze: {schema_summary}')
+            'api_deployment_id': os.getenv('API_DEPLOYMENT_ID'),
+            'api_version': os.getenv('API_VERSION')
         }
         
-        # Validate required configuration
-        required_vars = ['database_url', 'api_base_url', 'api_key']
-        missing_vars = [var for var in required_vars if not _config.get(var)]
+        # If no database URL in env, try loading from config.json
+        if not _config['database_url']:
+            try:
+                with open('config.json', 'r') as f:
+                    file_config = json.load(f)
+                    
+                    # Handle nested config structure
+                    if 'database' in file_config:
+                        _config['database_url'] = file_config['database'].get('url')
+                        _config['database_schema'] = file_config['database'].get('schema')
+                    
+                    if 'api' in file_config:
+                        _config['api_base_url'] = file_config['api'].get('base_url')
+                        _config['api_key'] = file_config['api'].get('api_key')
+                        _config['api_deployment_id'] = file_config['api'].get('deployment_id')
+                        _config['api_version'] = file_config['api'].get('api_version')
+                    
+                    # Also support flat structure for backward compatibility
+                    for key, value in file_config.items():
+                        if key not in ['database', 'api'] and (key not in _config or _config[key] is None):
+                            _config[key] = value
+            except FileNotFoundError:
+                logger.warning("config.json not found, using environment variables only")
         
-        if missing_vars:
-            logger.error(f"Missing required environment variables: {', '.join(missing_vars)}")
-            logger.error("Please check your environment configuration or .env file")
-            return None
-        
-        logger.info("Configuration loaded successfully from environment variables")
+        logger.info("Configuration loaded successfully")
         return _config
         
     except Exception as e:
@@ -419,30 +408,57 @@ def show_config():
 
 @app.route('/defaults')
 def show_defaults():
-    """Show default configuration values and environment variable setup (for API documentation)"""
+    """Show default configuration values (for API documentation)"""
     config = load_config()
     
-    if not config:
-        return jsonify({
-            "error": "Configuration not loaded",
-            "message": "Please check your environment variables",
-            "required_env_vars": [
-                "DATABASE_URL", "API_BASE_URL", "API_KEY"
-            ]
-        }), 500
+    # Also try to load the original config.json to get all fields
+    all_defaults = {}
     
-    # Apply masking to sensitive data for security
-    masked_config = {}
-    for key, value in config.items():
+    try:
+        # Load from config.json to get all default values including nested ones
+        with open('config.json', 'r') as f:
+            file_config = json.load(f)
+            
+            # Flatten the nested structure for display
+            if 'database' in file_config:
+                all_defaults.update({
+                    'database_url': file_config['database'].get('url', ''),
+                    'database_schema': file_config['database'].get('schema', '')
+                })
+            
+            if 'api' in file_config:
+                api_config = file_config['api']
+                all_defaults.update({
+                    'api_base_url': api_config.get('base_url', ''),
+                    'api_key': api_config.get('api_key', ''),
+                    'api_deployment_id': api_config.get('deployment_id', ''),
+                    'api_version': api_config.get('api_version', ''),
+                    'prompt_template': api_config.get('prompt_template', ''),
+                    'max_tokens': api_config.get('max_tokens', ''),
+                    'temperature': api_config.get('temperature', ''),
+                    'timeout': api_config.get('timeout', ''),
+                    'max_retries': api_config.get('max_retries', '')
+                })
+    except FileNotFoundError:
+        # Fall back to current config if file not found
+        all_defaults = config or {}
+    
+    # If we have current config, use it (environment variables override file)
+    if config:
+        all_defaults.update(config)
+    
+    # Apply masking to sensitive data
+    masked_defaults = {}
+    for key, value in all_defaults.items():
         if value is None or value == '':
-            masked_config[key] = "NOT_SET"
+            masked_defaults[key] = "NOT_SET"
         elif 'password' in key.lower() or 'key' in key.lower():
             if len(str(value)) > 8:
-                masked_config[key] = str(value)[:4] + "***" + str(value)[-4:]
+                masked_defaults[key] = str(value)[:4] + "***" + str(value)[-4:]
             elif value:
-                masked_config[key] = "***"
+                masked_defaults[key] = "***"
             else:
-                masked_config[key] = "NOT_SET"
+                masked_defaults[key] = "NOT_SET"
         elif 'url' in key.lower() and value and "@" in str(value):
             # Special handling for database URLs with credentials
             url_str = str(value)
@@ -454,33 +470,21 @@ def show_defaults():
                     auth_part, host_part = rest.split("@", 1)
                     if ":" in auth_part:
                         user, _ = auth_part.split(":", 1)
-                        masked_config[key] = f"{protocol}://{user}:***@{host_part}"
+                        masked_defaults[key] = f"{protocol}://{user}:***@{host_part}"
                     else:
-                        masked_config[key] = f"{protocol}://{auth_part}:***@{host_part}"
+                        masked_defaults[key] = url_str
                 else:
-                    masked_config[key] = value
+                    masked_defaults[key] = url_str
             else:
-                masked_config[key] = value
+                masked_defaults[key] = url_str
+        elif 'url' in key.lower() and value:
+            masked_defaults[key] = str(value)[:50] + '...' if len(str(value)) > 50 else str(value)
         else:
-            masked_config[key] = value
-
+            masked_defaults[key] = value
+    
     return jsonify({
-        "service": "Database Schema Glossary Generator",
-        "version": "v2.0-env-vars",
-        "configuration_source": "environment_variables",
-        "config_count": len(masked_config),
-        "environment_variables": masked_config,
-        "setup_help": {
-            "required_env_vars": [
-                "DATABASE_URL", "API_BASE_URL", "API_KEY"
-            ],
-            "optional_env_vars": [
-                "DATABASE_SCHEMA", "API_DEPLOYMENT_ID", "API_VERSION",
-                "API_MAX_TOKENS", "API_TEMPERATURE", "API_TIMEOUT", 
-                "API_MAX_RETRIES", "API_PROMPT_TEMPLATE", "PORT"
-            ],
-            "example_file": ".env.example"
-        }
+        "defaults": masked_defaults,
+        "note": "Sensitive data (passwords, API keys) are masked with ***"
     })
 
 @app.route('/database/tables')
