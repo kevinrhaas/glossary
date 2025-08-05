@@ -1,6 +1,6 @@
 # Database Schema Glossary Generator
 
-A bitty little web service that analyzes database schemas and generates baseline hierarchical business glossaries using AI.
+A little bitty web service that analyzes database schemas and generates baseline hierarchical business glossaries using AI.
 
 **Supports multiple databases:** PostgreSQL, MySQL/MariaDB, SQLite, SQL Server, Oracle, and any SQLAlchemy-compatible database.
 
