@@ -154,42 +154,36 @@ curl -X POST http://localhost:5000/generate \
   }'
 ```
 
-**Response (PDC Export Format):**
-```json
-{
-  "success": true,
-  "data": {
-    "pdc_export": [
-      {
-        "_id": "2a5178c3-95c2-421e-b063-5392c7234936",
-        "name": "Healthcare Laboratory Operations",
-        "type": "glossary",
-        "fqdn": "Healthcare Laboratory Operations",
-        "rootId": "2a5178c3-95c2-421e-b063-5392c7234936",
-        "attributes": {
-          "style": {"color": "#70759C"},
-          "info": {
-            "definition": "...",
-            "status": "Draft"
-          }
-        },
-        "createdAt": "2025-08-04T14:43:58.000Z",
-        "updatedAt": "2025-08-04T14:43:58.000Z"
-      },
-      {
-        "_id": "c7c0e5a0-3000-4758-a44e-dee69249818e",
-        "name": "Patients",
-        "type": "category",
-        "parentId": "2a5178c3-95c2-421e-b063-5392c7234936",
-        "fqdn": "Healthcare Laboratory Operations/Patients",
-        "rootId": "2a5178c3-95c2-421e-b063-5392c7234936",
-        "attributes": {
-          "style": {"color": "#70759C"}
-        }
-      }
-    ]
-  }
-}
+**Response (CSV Download):**
+The endpoint returns a CSV file with PDC-compatible format:
+
+```csv
+_id,name,type,fqdn,parentId,rootId,resourceId,createdAt,updatedAt,createdBy,updatedBy,attributes
+2a5178c3-95c2-421e-b063-5392c7234936,Healthcare Laboratory Operations,glossary,Healthcare Laboratory Operations,,2a5178c3-95c2-421e-b063-5392c7234936,,2025-08-04T14:43:58.000Z,2025-08-04T14:43:58.000Z,system,system,"{""info"":{""status"":""Draft""}}"
+c7c0e5a0-3000-4758-a44e-dee69249818e,Patients,category,Healthcare Laboratory Operations/Patients,2a5178c3-95c2-421e-b063-5392c7234936,2a5178c3-95c2-421e-b063-5392c7234936,,2025-08-04T14:43:58.000Z,2025-08-04T14:43:58.000Z,system,system,"{""info"":{""status"":""Draft""}}"
+f1e4d3c2-b1a9-4567-8901-234567890abc,Patient Identification,term,Healthcare Laboratory Operations/Patients/Patient Identification,c7c0e5a0-3000-4758-a44e-dee69249818e,2a5178c3-95c2-421e-b063-5392c7234936,,2025-08-04T14:43:58.000Z,2025-08-04T14:43:58.000Z,system,system,"{""info"":{""status"":""Draft""}}"
+```
+
+**Headers:**
+- `Content-Type: text/csv`
+- `Content-Disposition: attachment; filename="glossary_export.csv"`
+
+**Format Features:**
+- **GUID-based IDs**: Each item has a unique identifier
+- **Hierarchical Types**: `glossary` (root) → `category` (container) → `term` (leaf)
+- **FQDN Paths**: Forward-slash separated fully qualified domain names
+- **Parent-Child Relationships**: `parentId` and `rootId` maintain hierarchy
+- **PDC Compatible**: Direct import into Pentaho Data Catalog
+
+### `POST /analyze`
+Generate business glossary from database schema
+
+**Request:**
+```bash
+curl -X POST http://localhost:5000/analyze \
+  -H "Content-Type: application/json" \
+  -d '{}'
+```
 
 **Response:**
 ```json
