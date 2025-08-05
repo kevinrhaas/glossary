@@ -40,3 +40,12 @@ archive/
 
 # Development notes and process documentation
 dev-notes/
+
+# Test directory and all test files
+tests/
+test-*
+*test*.csv
+*test*.json
+*output*.csv
+*analysis*.json
+*glossary*.csv

@@ -15,8 +15,8 @@ read -p "Continue with ${ENVIRONMENT} deployment? (y/N): " -n 1 -r one
 
 set -e
 
-# Environment parameter (default to production)
-ENVIRONMENT=${1:-production}
+# Environment parameter (default to test for safety)
+ENVIRONMENT=${1:-test}
 
 echo "🚀 Smart Deploy to AWS App Runner..."
 echo "🎯 Target Environment: ${ENVIRONMENT}"

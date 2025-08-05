@@ -1,11 +1,11 @@
 #!/bin/bash
 
-# Full Deployment Pipeline
-# This script runs the complete deployment process step by step
+# Interactive Deployment Pipeline
+# This script runs the complete deployment process with user prompts and choices
 
 set -e
 
-echo "🚀 Starting full deployment pipeline..."
+echo "🚀 Starting INTERACTIVE deployment pipeline..."
 echo ""
 
 # Check if .env file exists for local development
@@ -118,16 +118,8 @@ chmod +x deploy/check-status.sh
 # Optional Step 5: Cleanup old services
 if [ "${DEPLOYMENT_TYPE}" = "ecs" ]; then
   echo ""
-  read -p "Clean up old services? (y/N): " -n 1 -r
-  echo
-  if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo ""
-    echo "========================================="
-    echo "Step 5: Cleaning up old services"
-    echo "========================================="
-    chmod +x deploy/cleanup-old-services.sh
-    ./deploy/cleanup-old-services.sh
-  fi
+  echo "ℹ️  Legacy cleanup scripts have been archived."
+  echo "Manual cleanup via AWS CLI if needed for old resources."
 fi
 
 echo ""

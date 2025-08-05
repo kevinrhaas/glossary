@@ -2,12 +2,12 @@
 
 # Smart Deploy to ECS - Updates existing service or creates new one
 # This script intelligently handles both first deployments and updates
-# Supports multiple environments: production, test, staging
+# Supports multiple environments: production, test, staging (defaults to test for safety)
 
 set -e
 
-# Environment parameter (default to production)
-ENVIRONMENT=${1:-production}
+# Environment parameter (default to test for safety)
+ENVIRONMENT=${1:-test}
 
 echo "🚀 Smart Deploy to AWS ECS Fargate..."
 echo "🎯 Target Environment: ${ENVIRONMENT}"

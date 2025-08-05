@@ -27,6 +27,38 @@ logger = logging.getLogger(__name__)
 # Global variables for lazy loading
 _db_engine = None
 _config = None
+_prompts = None
+
+def load_prompts():
+    """Load prompt templates from prompts.json file"""
+    global _prompts
+    if _prompts is not None:
+        return _prompts
+    
+    try:
+        with open('prompts.json', 'r') as f:
+            _prompts = json.load(f)
+        logger.info("Prompt templates loaded successfully")
+        return _prompts
+    except FileNotFoundError:
+        logger.warning("prompts.json not found, using default prompt")
+        _prompts = {
+            "default": {
+                "name": "Default Business Glossary",
+                "description": "Default business glossary generator",
+                "template": ('Analyze this database schema and create a comprehensive business data glossary. '
+                           'Based on the table names, column names, and their relationships, analyze the business at hand, '
+                           'and organize the business terms into a hierarchical structure. '
+                           'Return ONLY valid JSON in this exact format: '
+                           '{{ "Root Glossary Name": [ {{ "Category Under Root": [ "Simple Leaf Term", '
+                           '{{ "Parent Leaf Term": [ "Nested Leaf Term" ] }} ] }} ] }}. '
+                           'Use meaningful business terms derived from the schema. Schema to analyze: {schema_summary}')
+            }
+        }
+        return _prompts
+    except Exception as e:
+        logger.error(f"Error loading prompt templates: {e}")
+        return None
 
 def load_config():
     """Load configuration from environment variables with defaults (lazy loading)"""
@@ -54,17 +86,7 @@ def load_config():
             'api_max_retries': int(os.getenv('API_MAX_RETRIES', '3')),
             
             # Server configuration
-            'port': int(os.getenv('PORT', '5000')),
-            
-            # AI prompt template
-            'api_prompt_template': os.getenv('API_PROMPT_TEMPLATE', 
-                'Analyze this database schema and create a comprehensive business data glossary. '
-                'Based on the table names, column names, and their relationships, analyze the business at hand, '
-                'and organize the business terms into a hierarchical structure. '
-                'Return ONLY valid JSON in this exact format: '
-                '{{ "Root Glossary Name": [ {{ "Category Under Root": [ "Simple Leaf Term", '
-                '{{ "Parent Leaf Term": [ "Nested Leaf Term" ] }} ] }} ] }}. '
-                'Use meaningful business terms derived from the schema. Schema to analyze: {schema_summary}')
+            'port': int(os.getenv('PORT', '5000'))
         }
         
         # Validate required configuration
@@ -82,6 +104,119 @@ def load_config():
     except Exception as e:
         logger.error(f"Error loading configuration: {e}")
         return None
+
+def transform_to_csv(hierarchical_data):
+    """Transform hierarchical glossary data directly to CSV format without AI"""
+    import csv
+    import io
+    from datetime import datetime
+    
+    # CSV headers for PDC format
+    headers = ['_id','name','type','fqdn','parentId','rootId','resourceId','createdAt','updatedAt','createdBy','updatedBy','attributes']
+    
+    # Prepare CSV data
+    rows = []
+    current_time = datetime.utcnow().isoformat() + 'Z'
+    
+    def generate_guid():
+        import uuid
+        return str(uuid.uuid4())
+    
+    def process_hierarchy(data, parent_id=None, root_id=None, parent_fqdn=""):
+        """Recursively process the hierarchical data structure"""
+        
+        if isinstance(data, dict):
+            for key, value in data.items():
+                # Generate IDs
+                item_id = generate_guid()
+                current_root_id = root_id if root_id else item_id
+                
+                # Build FQDN with forward slashes
+                if parent_fqdn:
+                    fqdn = f"{parent_fqdn}/{key}"
+                else:
+                    fqdn = key
+                
+                # Determine type based on hierarchy level and content (lowercase)
+                if parent_id is None:
+                    item_type = "glossary"
+                elif isinstance(value, list) and any(isinstance(item, dict) for item in value):
+                    item_type = "category"
+                else:
+                    item_type = "term"
+                
+                # Create attributes with proper JSON escaping
+                attributes = '{"info":{"status":"Draft"}}'
+                
+                # Add row
+                row = [
+                    item_id,                    # _id
+                    key,                        # name
+                    item_type,                  # type
+                    fqdn,                       # fqdn
+                    parent_id or '',            # parentId
+                    current_root_id,            # rootId
+                    '',                         # resourceId
+                    current_time,               # createdAt
+                    current_time,               # updatedAt
+                    'system',                   # createdBy
+                    'system',                   # updatedBy
+                    attributes                  # attributes
+                ]
+                rows.append(row)
+                
+                # Process children
+                if isinstance(value, list):
+                    for item in value:
+                        process_hierarchy(item, item_id, current_root_id, fqdn)
+                elif isinstance(value, dict):
+                    process_hierarchy(value, item_id, current_root_id, fqdn)
+        
+        elif isinstance(data, list):
+            for item in data:
+                process_hierarchy(item, parent_id, root_id, parent_fqdn)
+        
+        elif isinstance(data, str):
+            # This is a leaf term
+            item_id = generate_guid()
+            current_root_id = root_id if root_id else item_id
+            
+            # Build FQDN with forward slashes
+            if parent_fqdn:
+                fqdn = f"{parent_fqdn}/{data}"
+            else:
+                fqdn = data
+            
+            # Create attributes with proper JSON escaping
+            attributes = '{"info":{"status":"Draft"}}'
+            
+            # Add row
+            row = [
+                item_id,                    # _id
+                data,                       # name
+                "term",                     # type (lowercase)
+                fqdn,                       # fqdn
+                parent_id or '',            # parentId
+                current_root_id,            # rootId
+                '',                         # resourceId
+                current_time,               # createdAt
+                current_time,               # updatedAt
+                'system',                   # createdBy
+                'system',                   # updatedBy
+                attributes                  # attributes
+            ]
+            rows.append(row)
+    
+    # Process the input data
+    process_hierarchy(hierarchical_data)
+    
+    # Generate CSV
+    output = io.StringIO()
+    writer = csv.writer(output, quoting=csv.QUOTE_MINIMAL)
+    writer.writerow(headers)
+    writer.writerows(rows)
+    
+    return output.getvalue()
 
 def get_database_engine():
     """Get database engine with lazy loading and connection pooling"""
@@ -144,7 +279,7 @@ def clean_and_validate_json(response_text: str) -> dict:
         logger.warning(f"Invalid JSON in API response: {e}")
         return None
 
-def make_api_call(schema_summary: str, api_config: dict = None) -> dict:
+def make_api_call(schema_summary: str, api_config: dict = None, prompt_template_name: str = "default") -> dict:
     """Make an API call with the schema summary and configured prompt."""
     config = load_config()
     if not config:
@@ -185,45 +320,21 @@ def make_api_call(schema_summary: str, api_config: dict = None) -> dict:
         logger.error("Missing required API configuration (base_url, api_key)")
         return None
     
-    # Default prompt template for glossary generation
-    prompt_template = """Analyze this database schema and create a comprehensive business glossary in JSON format.
+    # Load prompt template from prompts.json
+    prompts = load_prompts()
+    if not prompts:
+        logger.error("Failed to load prompt templates")
+        return None
     
-Schema: {schema_summary}
-
-Create a hierarchical glossary that organizes business terms by categories. Use this exact JSON structure:
-
-{{
-  "Business Glossary": [
-    {{
-      "Customer & Demographics": [
-        "Customer",
-        "Customer Segment", 
-        "Demographics",
-        {{
-          "Customer Lifecycle": [
-            "Customer Acquisition",
-            "Customer Retention"
-          ]
-        }}
-      ]
-    }},
-    {{
-      "Campaign & Marketing": [
-        "Campaign",
-        "Channel",
-        "Campaign Performance"
-      ]
-    }}
-  ]
-}}
-
-Rules:
-1. Organize terms into logical business categories
-2. Use array items for simple terms 
-3. Use objects with arrays for subcategories
-4. Include terms that business users would understand
-5. Focus on business concepts, not technical database details
-6. Return ONLY valid JSON, no explanations or markdown"""
+    # Get the specified prompt template
+    if prompt_template_name not in prompts:
+        logger.error(f"Prompt template '{prompt_template_name}' not found in prompts.json")
+        return None
+    
+    prompt_info = prompts[prompt_template_name]
+    prompt_template = prompt_info["template"]
+    
+    logger.info(f"Using prompt template: {prompt_info['name']} - {prompt_info['description']}")
     
     formatted_prompt = prompt_template.format(schema_summary=schema_summary)
     
@@ -291,6 +402,153 @@ Rules:
             logger.error(f"API call attempt {attempt} error: {e}")
             if attempt < max_retries:
                 continue
+    
+    logger.error(f"All {max_retries} API call attempts failed")
+    return None
+
+def make_api_call_for_generate(input_data: str, api_config: dict = None, prompt_template_name: str = 'generate'):
+    """Make API call for generate endpoint with input data transformation."""
+    
+    # Load configuration
+    config = load_config()
+    if not config:
+        logger.error("Failed to load configuration")
+        return None
+    
+    # Set up default API configuration from environment
+    default_api_config = {
+        'base_url': config.get('api_base_url'),
+        'api_key': config.get('api_key'),
+        'deployment_id': config.get('api_deployment_id', 'model-router'),
+        'api_version': config.get('api_version', '2025-01-01-preview'),
+        'max_tokens': config.get('api_max_tokens', 8192),
+        'temperature': config.get('api_temperature', 0.7),
+        'timeout': config.get('api_timeout', 60.0),
+        'max_retries': config.get('api_max_retries', 3),
+        'top_p': 0.95,
+        'frequency_penalty': 0,
+        'presence_penalty': 0,
+        'model': 'model-router'
+    }
+    
+    # Merge with any provided overrides
+    if api_config:
+        default_api_config.update(api_config)
+    
+    # Use the merged configuration
+    api_config = default_api_config
+    
+    base_url = api_config.get('base_url')
+    deployment_id = api_config.get('deployment_id', 'model-router')
+    api_version = api_config.get('api_version', '2025-01-01-preview')
+    api_key = api_config.get('api_key')
+    max_retries = api_config.get('max_retries', 3)
+    
+    if not all([base_url, api_key]):
+        logger.error("Missing required API configuration (base_url, api_key)")
+        return None
+    
+    # Load prompt template from prompts.json
+    prompts = load_prompts()
+    if not prompts:
+        logger.error("Failed to load prompt templates")
+        return None
+    
+    # Get the specified prompt template
+    if prompt_template_name not in prompts:
+        logger.error(f"Prompt template '{prompt_template_name}' not found in prompts.json")
+        return None
+    
+    prompt_info = prompts[prompt_template_name]
+    prompt_template = prompt_info["template"]
+    
+    logger.info(f"Using prompt template: {prompt_info['name']} - {prompt_info['description']}")
+    
+    formatted_prompt = prompt_template.format(input_data=input_data)
+    
+    # Log the first 300 characters of the formatted prompt for debugging
+    logger.info(f"Generated prompt for AI ({len(formatted_prompt)} chars): {formatted_prompt[:300]}{'...' if len(formatted_prompt) > 300 else ''}")
+    
+    message = {
+        "messages": [
+            {
+                "role": "user",
+                "content": formatted_prompt
+            }
+        ],
+        "max_tokens": api_config.get("max_tokens", 8192),
+        "temperature": api_config.get("temperature", 0.7),
+        "top_p": api_config.get("top_p", 0.95),
+        "frequency_penalty": api_config.get("frequency_penalty", 0),
+        "presence_penalty": api_config.get("presence_penalty", 0),
+        "model": api_config.get("model", "model-router")
+    }
+    
+    for attempt in range(1, max_retries + 1):
+        logger.info(f"Making API call attempt {attempt}/{max_retries} to: {base_url}")
+        
+        try:
+            response = httpx.post(
+                f'http://{base_url}/deployments/{deployment_id}/chat/completions?api-version={api_version}',
+                headers={
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*',
+                    'Access-Control-Allow-Credentials': 'true',
+                    'api-key': api_key
+                },
+                json=message,
+                timeout=api_config.get('timeout', 60.0)
+            )
+            
+            response.raise_for_status()
+            response_data = response.json()
+            
+            logger.info("API call successful")
+            content = response_data.get('choices', [{}])[0].get('message', {}).get('content', '')
+            
+            try:
+                # For generate endpoint, detect the output format
+                if prompt_template_name == 'generate':
+                    content_stripped = content.strip()
+                    
+                    # Check if it's CSV format (starts with _id,name,type,fqdn...)
+                    if content_stripped.startswith('_id,name,type,fqdn') or content_stripped.startswith('"_id","name","type","fqdn"'):
+                        logger.info("Response detected as CSV format")
+                        return {"csv_content": content_stripped}
+                    
+                    # Try JSON Lines format
+                    lines = content_stripped.split('\n')
+                    parsed_objects = []
+                    for line in lines:
+                        if line.strip():
+                            try:
+                                parsed_objects.append(json.loads(line))
+                            except json.JSONDecodeError:
+                                # If JSON Lines parsing fails, try regular JSON
+                                pass
+                    
+                    if parsed_objects:
+                        logger.info(f"Response successfully parsed as JSON Lines ({len(parsed_objects)} objects)")
+                        # Return the raw JSON Lines text format
+                        return {"json_lines_text": content_stripped}
+                
+                # Try to parse as regular JSON
+                content_json = json.loads(content)
+                logger.info("Response successfully parsed as JSON")
+                return content_json
+            except json.JSONDecodeError:
+                logger.warning("Response is not valid JSON, returning as text")
+                return {"generated_content": content}
+                
+        except httpx.TimeoutException:
+            logger.warning(f"API call attempt {attempt} timed out")
+        except httpx.HTTPStatusError as e:
+            logger.error(f"API call attempt {attempt} failed with status {e.response.status_code}: {e.response.text}")
+        except Exception as e:
+            logger.error(f"API call attempt {attempt} failed with unexpected error: {e}")
+            
+        if attempt < max_retries:
+            continue
     
     logger.error(f"All {max_retries} API call attempts failed")
     return None
@@ -377,6 +635,7 @@ def home():
             "/health - Health check with database connectivity",
             "/config - Complete configuration with sources (env vars vs defaults)",
             "/analyze - POST: Generate AI-powered business glossary from database schema",
+            "/generate - POST: Transform glossary data to PDC-compatible CSV format",
             "/docs - API documentation"
         ],
         "database_configured": bool(config and config.get('database_url')),
@@ -411,7 +670,6 @@ def show_config():
         'api_temperature': 'API_TEMPERATURE',
         'api_timeout': 'API_TIMEOUT',
         'api_max_retries': 'API_MAX_RETRIES',
-        'api_prompt_template': 'API_PROMPT_TEMPLATE',
         'port': 'PORT'
     }
     
@@ -478,13 +736,101 @@ def show_config():
             "optional_env_vars": [
                 "DATABASE_SCHEMA", "API_DEPLOYMENT_ID", "API_VERSION",
                 "API_MAX_TOKENS", "API_TEMPERATURE", "API_TIMEOUT", 
-                "API_MAX_RETRIES", "API_PROMPT_TEMPLATE", "PORT"
+                "API_MAX_RETRIES", "PORT"
             ],
             "local_development": "Copy .env.example to .env and edit with your values",
             "production": "Set environment variables in your deployment platform"
         },
         "note": "Sensitive data (passwords, API keys) are masked with *** for security"
     })
+
+@app.route('/prompts')
+def get_prompt_templates():
+    """Get available prompt templates"""
+    try:
+        prompts = load_prompts()
+        if not prompts:
+            return jsonify({
+                "error": "Failed to load prompt templates",
+                "details": "prompts.json file not found or invalid"
+            }), 500
+        
+        # Format for API response
+        templates = {}
+        for key, value in prompts.items():
+            templates[key] = {
+                "name": value["name"],
+                "description": value["description"]
+            }
+        
+        return jsonify({
+            "prompt_templates": templates,
+            "available_routes": list(templates.keys()),
+            "usage": "Each route automatically uses its corresponding prompt template",
+            "count": len(templates)
+        })
+    except Exception as e:
+        logger.error(f"Error getting prompt templates: {e}")
+        return jsonify({
+            "error": "Failed to retrieve prompt templates",
+            "details": str(e)
+        }), 500
+
+@app.route('/generate', methods=['POST'])
+def generate_output():
+    """Transform glossary data directly into CSV format (no AI)."""
+    try:
+        start_time = time.time()
+        
+        # Get input data from request body
+        request_data = request.get_json()
+        if not request_data:
+            return jsonify({
+                "success": False,
+                "error": "Request body is required",
+                "details": "Provide JSON data to transform"
+            }), 400
+        
+        # Extract the input data (should be the output from /analyze)
+        input_data = request_data.get('data')
+        if not input_data:
+            return jsonify({
+                "success": False,
+                "error": "Missing 'data' field",
+                "details": "Provide the glossary data to transform in the 'data' field"
+            }), 400
+        
+        logger.info("Starting direct glossary data transformation to CSV...")
+        
+        # Transform data directly to CSV format
+        csv_content = transform_to_csv(input_data)
+        
+        processing_time = round(time.time() - start_time, 2)
+        
+        logger.info(f"Direct transformation completed successfully in {processing_time}s")
+        
+        # Return CSV content with proper headers
+        from flask import Response
+        return Response(
+            csv_content,
+            content_type='text/csv',
+            headers={'Content-Disposition': 'attachment; filename="glossary_export.csv"'}
+        )
+            
+    except json.JSONDecodeError:
+        logger.error("Invalid JSON in request body")
+        return jsonify({
+            "success": False,
+            "error": "Invalid JSON format",
+            "details": "Request body must be valid JSON"
+        }), 400
+    except Exception as e:
+        logger.error(f"Error in generate endpoint: {e}")
+        return jsonify({
+            "success": False,
+            "error": "Internal server error",
+            "details": str(e)
+        }), 500
 
 @app.route('/database/tables')
 def list_tables():
@@ -665,8 +1011,11 @@ def analyze_schema():
         # Extract API configuration from request or use defaults
         api_config = request_data.get('api', {}) if request_data else {}
         
+        # Use route-based prompt template (analyze endpoint uses "analyze" prompt)
+        prompt_template_name = 'analyze'
+        
         # Make API call with schema summary
-        api_response = make_api_call(schema_summary, api_config if api_config else None)
+        api_response = make_api_call(schema_summary, api_config if api_config else None, prompt_template_name)
         
         processing_time = round(time.time() - start_time, 2)
         
@@ -714,201 +1063,80 @@ def analyze_schema():
 
 @app.route('/docs', methods=['GET'])
 def documentation():
-    """API documentation endpoint."""
-    config = load_config()
-    
-    # Get actual default values from configuration
-    masked_db_url = ""
-    masked_api_key = ""
-    default_base_url = ""
-    default_schema = ""
-    
-    if config:
-        db_url = config.get('database_url', '')
-        if db_url and "@" in db_url:
-            parts = db_url.split("://")
-            if len(parts) == 2:
-                protocol = parts[0]
-                rest = parts[1]  
-                if "@" in rest:
-                    auth_part, host_part = rest.split("@", 1)
-                    if ":" in auth_part:
-                        user, _ = auth_part.split(":", 1)
-                        masked_db_url = f"{protocol}://{user}:***@{host_part}"
-        else:
-            masked_db_url = db_url if db_url else "NOT_CONFIGURED"
+    """API documentation endpoint - loads from external HTML file."""
+    try:
+        config = load_config()
         
-        api_key = config.get('api_key', '')
-        if len(api_key) > 8:
-            masked_api_key = api_key[:4] + "***" + api_key[-4:]
-        elif api_key:
-            masked_api_key = "***"
-        else:
-            masked_api_key = "NOT_CONFIGURED"
+        # Get actual default values from configuration
+        masked_db_url = "NOT_CONFIGURED"
+        masked_api_key = "NOT_CONFIGURED"
+        default_base_url = "NOT_CONFIGURED"
+        default_schema = "public"
         
-        default_base_url = config.get('api_base_url', '') or "NOT_CONFIGURED"
-        default_schema = config.get('database_schema', '') or "public"
-    
-    docs_html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Database Schema Glossary Generator - API Documentation</title>
-        <style>
-            body {{ font-family: Arial, sans-serif; margin: 20px; line-height: 1.6; }}
-            .endpoint {{ background: #f4f4f4; padding: 15px; margin: 10px 0; border-radius: 5px; }}
-            .method {{ color: #fff; padding: 3px 8px; border-radius: 3px; font-weight: bold; }}
-            .post {{ background: #28a745; }}
-            .get {{ background: #007bff; }}
-            pre {{ background: #f8f9fa; padding: 15px; border-radius: 5px; overflow-x: auto; }}
-            .required {{ color: #dc3545; font-weight: bold; }}
-            .optional {{ color: #6c757d; }}
-        </style>
-    </head>
-    <body>
-        <h1>Database Schema Glossary Generator API</h1>
-        <p>Generate AI-powered business glossaries from database schemas using advanced language models.</p>
-        
-        <div class="endpoint">
-            <h3><span class="method post">POST</span> /analyze</h3>
-            <p>Analyzes a database schema and generates a hierarchical business glossary using AI.</p>
-            <p><strong>Note:</strong> All parameters are optional. Environment variables provide defaults, and any request parameters override/merge with those defaults.</p>
+        if config:
+            db_url = config.get('database_url', '')
+            if db_url and "@" in db_url:
+                parts = db_url.split("://")
+                if len(parts) == 2:
+                    protocol = parts[0]
+                    rest = parts[1]  
+                    if "@" in rest:
+                        auth_part, host_part = rest.split("@", 1)
+                        if ":" in auth_part:
+                            user, _ = auth_part.split(":", 1)
+                            masked_db_url = f"{protocol}://{user}:***@{host_part}"
+            else:
+                masked_db_url = db_url if db_url else "NOT_CONFIGURED"
             
-            <h4>Request Body (JSON) - Optional overrides:</h4>
-            <pre>{{
-  "database": {{
-    "url": "<span class=\"optional\">string</span> - Override database URL (current: {masked_db_url})",
-    "schema": "<span class=\"optional\">string</span> - Override schema name (current: {default_schema})"
-  }},
-  "api": {{
-    "base_url": "<span class=\"optional\">string</span> - Override API base URL (current: {default_base_url})",
-    "api_key": "<span class=\"optional\">string</span> - Override API key (current: {masked_api_key})",
-    "deployment_id": "<span class=\"optional\">string</span> - Deployment ID (default: 'model-router')",
-    "api_version": "<span class=\"optional\">string</span> - API version (default: '2025-01-01-preview')",
-    "max_tokens": "<span class=\"optional\">number</span> - Max response tokens (default: 8192)",
-    "temperature": "<span class=\"optional\">number</span> - AI temperature 0-1 (default: 0.7)",
-    "timeout": "<span class=\"optional\">number</span> - Request timeout in seconds (default: 60)",
-    "max_retries": "<span class=\"optional\">number</span> - Max retry attempts (default: 3)"
-  }}
-}}</pre>
-
-            <h4>Simple Example Request (use all defaults):</h4>
-            <pre>POST /analyze
-Content-Type: application/json
-
-{{}}</pre>
-
-            <h4>Database Override Example (merge with API defaults):</h4>
-            <pre>{{
-  "database": {{
-    "url": "postgresql://user:pass@host:port/dbname?sslmode=require",
-    "schema": "my_schema"
-  }}
-}}</pre>
-
-            <h4>API Override Example (merge with database defaults):</h4>
-            <pre>{{
-  "api": {{
-    "temperature": 0.3,
-    "max_retries": 5
-  }}
-}}</pre>
-
-            <h4>Full Override Example:</h4>
-            <pre>{{
-  "database": {{
-    "url": "postgresql://user:pass@host:port/dbname?sslmode=require", 
-    "schema": "custom_schema"
-  }},
-  "api": {{
-    "temperature": 0.3,
-    "max_retries": 5
-  }}
-}}</pre>
-
-            <h4>Response:</h4>
-            <pre>{{
-  "success": true,
-  "data": {{
-    "Business Glossary": [
-      {{
-        "Customer & Demographics": [
-          "Customer",
-          "Customer Segment",
-          {{
-            "Customer Lifecycle": [
-              "Customer Acquisition",
-              "Customer Retention"
-            ]
-          }}
-        ]
-      }},
-      {{
-        "Campaign & Marketing": [
-          "Campaign",
-          "Channel", 
-          "Campaign Performance"
-        ]
-      }}
-    ]
-  }},
-  "metadata": {{
-    "tables_analyzed": 7,
-    "schema_name": "{default_schema}",
-    "processing_time": 2.3,
-    "ai_model_used": "model-router"
-  }}
-}}</pre>
-        </div>
+            api_key = config.get('api_key', '')
+            if len(api_key) > 8:
+                masked_api_key = api_key[:4] + "***" + api_key[-4:]
+            elif api_key:
+                masked_api_key = "***"
+            else:
+                masked_api_key = "NOT_CONFIGURED"
+            
+            default_base_url = config.get('api_base_url', '') or "NOT_CONFIGURED"
+            default_schema = config.get('database_schema', '') or "public"
         
-        <div class="endpoint">
-            <h3><span class="method get">GET</span> /config</h3>
-            <p>View current configuration status (sensitive data masked).</p>
-        </div>
-
-        <div class="endpoint">
-            <h3><span class="method get">GET</span> /health</h3>
-            <p>Check service health with database connectivity test.</p>
-            <h4>Response:</h4>
-            <pre>{{
-  "status": "healthy",
-  "timestamp": "2025-08-01T18:39:47.267694Z",
-  "checks": {{
-    "service": "ok",
-    "database": "ok"
-  }}
-}}</pre>
-        </div>
-
-        <h3>Configuration</h3>
-        <p>Set these environment variables:</p>
-        <ul>
-            <li><strong>DATABASE_URL</strong> - PostgreSQL connection string (current: {masked_db_url})</li>
-            <li><strong>DATABASE_SCHEMA</strong> - Schema name (current: {default_schema})</li>
-            <li><strong>API_BASE_URL</strong> - AI API endpoint (current: {default_base_url})</li>
-            <li><strong>API_KEY</strong> - AI API key (current: {masked_api_key})</li>
-            <li><strong>API_DEPLOYMENT_ID</strong> - Model deployment ID (optional)</li>
-            <li><strong>API_VERSION</strong> - API version (optional)</li>
-        </ul>
-
-        <h3>Error Responses</h3>
-        <p>All endpoints return error responses in this format:</p>
-        <pre>{{
-  "success": false,
-  "error": "Error description",
-  "details": "Additional error details (optional)"
-}}</pre>
-
-        <h3>Common Error Codes</h3>
-        <ul>
-            <li><strong>400</strong> - Bad Request (invalid JSON)</li>
-            <li><strong>500</strong> - Internal Server Error (database connection, API call failures)</li>
-            <li><strong>503</strong> - Service Unavailable (database not accessible)</li>
-        </ul>
-    </body>
-    </html>
-    """
-    return docs_html
+        # Load documentation template from external file
+        docs_file_path = os.path.join(os.path.dirname(__file__), 'docs', 'api-docs.html')
+        
+        if os.path.exists(docs_file_path):
+            with open(docs_file_path, 'r', encoding='utf-8') as f:
+                docs_html = f.read()
+            
+            # Replace placeholders with actual configuration values
+            docs_html = docs_html.replace('{{masked_db_url}}', masked_db_url)
+            docs_html = docs_html.replace('{{masked_api_key}}', masked_api_key)
+            docs_html = docs_html.replace('{{default_base_url}}', default_base_url)
+            docs_html = docs_html.replace('{{default_schema}}', default_schema)
+            
+            return docs_html
+        else:
+            # Fallback simple documentation if file not found
+            return f"""
+            <html><body>
+            <h1>API Documentation</h1>
+            <p>Documentation file not found. Please ensure docs/api-docs.html exists.</p>
+            <p>Current config: DB={masked_db_url}, API={default_base_url}</p>
+            <h3>Available Endpoints:</h3>
+            <ul>
+                <li>POST /analyze - Analyze database schema</li>
+                <li>POST /generate - Generate CSV from hierarchical data</li>
+                <li>GET /health - Health check</li>
+                <li>GET /config - View configuration</li>
+                <li>GET /database/tables - List database tables</li>
+            </ul>
+            </body></html>
+            """
+    except Exception as e:
+        logger.error(f"Error loading documentation: {e}")
+        return jsonify({
+            "success": False,
+            "error": "Error loading documentation",
+            "details": str(e)
+        }), 500
 
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))

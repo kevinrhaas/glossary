@@ -272,8 +272,9 @@ Your application uses environment variables for all configuration (12-Factor App
 - `API_TEMPERATURE` - AI temperature (default: 0.7)
 - `API_TIMEOUT` - Request timeout in seconds (default: 60.0)
 - `API_MAX_RETRIES` - Max retry attempts (default: 3)
-- `API_PROMPT_TEMPLATE` - Custom AI prompt template
 - `PORT` - Server port (default: 5000)
+
+**Note:** Prompt templates are now managed in `prompts.json` file instead of environment variables.
 
 ### Local Development Setup
 

@@ -83,10 +83,32 @@ Health check with database connectivity test
 ### `GET /config`
 View current configuration (sensitive values masked)
 
+### `GET /prompts`
+List available route-based prompt templates
+
+**Response:**
+```json
+{
+  "prompt_templates": {
+    "analyze": {
+      "name": "Database Schema Analyzer",
+      "description": "Analyzes database schemas and generates comprehensive business glossaries"
+    },
+    "generate": {
+      "name": "Glossary Format Generator",
+      "description": "Transforms glossary data into different output formats"
+    }
+  },
+  "available_routes": ["analyze", "generate"],
+  "usage": "Each route automatically uses its corresponding prompt template",
+  "count": 2
+}
+```
+
 ### `POST /analyze`
 Generate business glossary from database schema
 
-**Basic request (uses environment defaults):**
+**Basic request:**
 ```bash
 curl -X POST http://localhost:5000/analyze \
   -H "Content-Type: application/json" \
@@ -104,6 +126,70 @@ curl -X POST http://localhost:5000/analyze \
     }
   }'
 ```
+
+### `POST /generate`
+Transform glossary data into PDC export format with GUIDs and hierarchical relationships
+
+**Request (uses output from /analyze):**
+```bash
+curl -X POST http://localhost:5000/generate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "data": {
+      "Healthcare Laboratory Operations": [
+        {
+          "Patients": [
+            "Patient Identification",
+            "Patient Demographics"
+          ]
+        },
+        {
+          "Tests": [
+            "Test Code", 
+            "Test Name"
+          ]
+        }
+      ]
+    }
+  }'
+```
+
+**Response (PDC Export Format):**
+```json
+{
+  "success": true,
+  "data": {
+    "pdc_export": [
+      {
+        "_id": "2a5178c3-95c2-421e-b063-5392c7234936",
+        "name": "Healthcare Laboratory Operations",
+        "type": "glossary",
+        "fqdn": "Healthcare Laboratory Operations",
+        "rootId": "2a5178c3-95c2-421e-b063-5392c7234936",
+        "attributes": {
+          "style": {"color": "#70759C"},
+          "info": {
+            "definition": "...",
+            "status": "Draft"
+          }
+        },
+        "createdAt": "2025-08-04T14:43:58.000Z",
+        "updatedAt": "2025-08-04T14:43:58.000Z"
+      },
+      {
+        "_id": "c7c0e5a0-3000-4758-a44e-dee69249818e",
+        "name": "Patients",
+        "type": "category",
+        "parentId": "2a5178c3-95c2-421e-b063-5392c7234936",
+        "fqdn": "Healthcare Laboratory Operations/Patients",
+        "rootId": "2a5178c3-95c2-421e-b063-5392c7234936",
+        "attributes": {
+          "style": {"color": "#70759C"}
+        }
+      }
+    ]
+  }
+}
 
 **Response:**
 ```json
@@ -147,7 +233,22 @@ For production deployment, see `DEPLOYMENT.md` for complete AWS deployment instr
 ./deploy/04-deploy-to-production.sh
 ```
 
-## API Request Overrides
+## API Request Options
+
+### Route-Based Prompt Templates
+
+The system uses route-based prompt templates stored in `prompts.json`:
+- **`/analyze`**: Uses "analyze" prompt - analyzes database schemas and generates hierarchical business glossaries
+- **`/generate`**: Uses "generate" prompt - transforms glossary data into PDC export format with GUIDs and parent-child relationships
+
+Each route automatically uses its corresponding prompt template. Use `GET /prompts` to see all available routes and their descriptions.
+
+### Two-Stage Workflow
+
+1. **Analyze Database** → `/analyze` generates hierarchical business glossary from schema
+2. **Generate PDC Export** → `/generate` transforms glossary into PDC format with GUIDs, types (glossary/category/term), and proper parent-child relationships
+
+### API Parameter Overrides
 
 You can override any API parameter per request while keeping environment defaults:
 
@@ -155,8 +256,18 @@ You can override any API parameter per request while keeping environment default
 {
   "api": {
     "temperature": 0.3,
-    "max_tokens": 4096,
-    "prompt_template": "Custom prompt with {schema_summary} placeholder"
+    "max_tokens": 4096
+  }
+}
+```
+
+For the `/generate` endpoint, provide the data to transform:
+
+```json
+{
+  "data": { /* hierarchical glossary data from /analyze */ },
+  "api": {
+    "temperature": 0.3
   }
 }
 ```

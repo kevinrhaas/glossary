@@ -2,7 +2,46 @@
 
 This directory contains bulletproof deployment scripts for the Database Schema Glossary Generator.
 
-## 🚀 Quick Start - Environment-Aware Deployment
+## 🚀 Quick Start - Automated Deployment
+
+### **Recommended Workflow:**
+
+1. **Test deployment first:**
+   ```bash
+   ./deploy/99-deploy-full-ecs-test.sh
+   ```
+
+2. **Production deployment after testing:**
+   ```bash
+   ./deploy/99-deploy-full-ecs-production.sh
+   ```
+
+### **Interactive deployment (legacy):**
+   ```bash
+   ./deploy/99-deploy-full-interactive.sh
+   ```
+
+## 🎯 Automated Full Pipeline Scripts
+
+### `99-deploy-full-ecs-test.sh` ✅ **RECOMMENDED**
+- **Purpose**: Fully automated test environment deployment
+- **No prompts**: Runs straight through to completion
+- **Safe**: Deploys to test environment for validation
+- **Usage**: `./deploy/99-deploy-full-ecs-test.sh`
+
+### `99-deploy-full-ecs-production.sh` ⚠️ **PRODUCTION**
+- **Purpose**: Fully automated production deployment
+- **No prompts**: Runs straight through to completion  
+- **Warning**: Deploys directly to production
+- **Usage**: `./deploy/99-deploy-full-ecs-production.sh`
+
+### `99-deploy-full-interactive.sh` 🤔 **INTERACTIVE**
+- **Purpose**: Step-by-step deployment with user prompts
+- **Prompts**: Asks for deployment target and confirmation at each step
+- **Flexible**: Supports both ECS and App Runner deployments
+- **Usage**: `./deploy/99-deploy-full-interactive.sh`
+
+## 🚀 Environment-Aware Deployment
 
 ## Individual Scripts
 
@@ -24,22 +63,29 @@ This directory contains bulletproof deployment scripts for the Database Schema G
 
 ### 3a. Deploy to AWS ECS Fargate
 ```bash
-./deploy/03-deploy-to-ecs.sh
+./deploy/03-deploy-to-ecs.sh [environment]
 ```
 - **Smart deployment**: Creates new service on first run, updates existing service on subsequent runs
+- **Environment Support**: `test` (default), `staging`, `production`
 - Creates ECS cluster, security group, IAM roles (first time only)
+- **Examples**:
+  - `./deploy/03-deploy-to-ecs.sh` → deploys to test (safe default)
+  - `./deploy/03-deploy-to-ecs.sh production` → deploys to production
 - **Rolling updates**: Updates existing service with zero downtime
 - Sets up CloudWatch logging
 - Returns public IP for testing
 
 ### 3b. Deploy to AWS App Runner (Alternative)
 ```bash
-./deploy/03-deploy-to-apprunner.sh  
+./deploy/03-deploy-to-apprunner.sh [environment]
 ```
 - **Smart deployment**: Creates new service on first run, updates existing service on subsequent runs
+- **Environment Support**: `test` (default), `staging`, `production`
 - **Rolling updates**: App Runner handles zero-downtime updates automatically
 - Auto-scaling and HTTPS included
-- Returns HTTPS URL for testing
+- **Examples**:
+  - `./deploy/03-deploy-to-apprunner.sh` → deploys to test (safe default)
+  - `./deploy/03-deploy-to-apprunner.sh production` → deploys to production
 
 ### 4. Test Deployment
 ```bash
@@ -58,13 +104,13 @@ This directory contains bulletproof deployment scripts for the Database Schema G
 
 **Recommended Workflow:**
 ```bash
-# 1. Deploy to test environment first
-./deploy/04-deploy-to-test.sh
+# 1. Deploy to test environment first (safe default)
+./deploy/03-deploy-to-ecs.sh
 
 # 2. Test your application thoroughly
 
 # 3. Deploy to production when ready
-./deploy/04-deploy-to-production.sh
+./deploy/03-deploy-to-ecs.sh production
 ```
 
 ### 🎯 Environment Options
