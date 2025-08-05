@@ -222,15 +222,45 @@ curl -X POST http://localhost:5000/generate \
 
 ## Deployment
 
-For production deployment, see `DEPLOYMENT.md` for complete AWS deployment instructions with Docker containers.
+### 🚀 Production Deployment (Static IP Solution)
 
-**Quick deployment:**
+This service is deployed on AWS ECS Fargate with **permanent static IP addresses** via Network Load Balancer:
+
+**Live Endpoints:**
+- **Production**: `http://98.82.64.9` or `http://3.212.111.131` (port 80)
+- **Test**: `http://98.82.64.9:8080` or `http://3.212.111.131:8080` (port 8080)
+
+**Quick Deploy Commands:**
 ```bash
 # Deploy to test environment
-./deploy/04-deploy-to-test.sh
+./deploy/99-deploy-full-ecs-test.sh
 
 # Deploy to production (after testing)
-./deploy/04-deploy-to-production.sh
+./deploy/99-deploy-full-ecs-production.sh
+
+# Quick access helper
+./deploy/quick-access.sh
+```
+
+**Infrastructure:**
+- **Static IPs**: Two Elastic IPs provide permanent endpoints that never change
+- **Load Balancer**: Network Load Balancer distributes traffic and provides high availability
+- **Auto-scaling**: ECS Fargate automatically handles container scaling and health checks
+- **Zero-downtime**: Deployments automatically re-register with load balancer
+
+### Alternative Deployment Options
+
+For complete deployment documentation including AWS App Runner, Lambda, and manual setup, see `DEPLOYMENT.md`.
+
+### Access Tools
+
+```bash
+# Test the static IP endpoints
+./deploy/access-test-static.sh    # Test environment
+./deploy/access-prod-static.sh    # Production environment
+
+# Monitor deployment progress (requires 'watch' command)
+watch -n 5 ./watch-target-health.sh test
 ```
 
 ## API Request Options

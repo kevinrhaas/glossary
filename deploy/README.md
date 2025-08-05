@@ -1,6 +1,14 @@
 # Deployment Scripts
 
-This directory contains bulletproof deployment scripts for the Database Schema Glossary Generator.
+This directory contains production-ready deployment scripts for the Database Schema Glossary Generator with **static IP endpoints**.
+
+## 🎯 Current Production Architecture
+
+**Static IP Endpoints (Never Change):**
+- **Production**: `http://98.82.64.9` or `http://3.212.111.131` (port 80)
+- **Test**: `http://98.82.64.9:8080` or `http://3.212.111.131:8080` (port 8080)
+
+**Infrastructure**: AWS ECS Fargate + Network Load Balancer + Static Elastic IPs
 
 ## 🚀 Quick Start - Automated Deployment
 
@@ -11,41 +19,69 @@ This directory contains bulletproof deployment scripts for the Database Schema G
    ./deploy/99-deploy-full-ecs-test.sh
    ```
 
-2. **Production deployment after testing:**
+2. **Verify test deployment:**
+   ```bash
+   ./deploy/access-test-static.sh
+   ```
+
+3. **Production deployment after testing:**
    ```bash
    ./deploy/99-deploy-full-ecs-production.sh
    ```
 
-### **Interactive deployment (legacy):**
+4. **Verify production deployment:**
    ```bash
-   ./deploy/99-deploy-full-interactive.sh
+   ./deploy/access-prod-static.sh
    ```
 
-## 🎯 Automated Full Pipeline Scripts
+### **Quick access and overview:**
+   ```bash
+   ./deploy/quick-access.sh  # Shows all endpoints and commands
+   ```
 
-### `99-deploy-full-ecs-test.sh` ✅ **RECOMMENDED**
+## 🎯 Automated Deployment Scripts
+
+### `99-deploy-full-ecs-test.sh` ✅ **RECOMMENDED FOR TESTING**
 - **Purpose**: Fully automated test environment deployment
-- **No prompts**: Runs straight through to completion
-- **Safe**: Deploys to test environment for validation
-- **Usage**: `./deploy/99-deploy-full-ecs-test.sh`
+- **Target**: ECS Fargate service `glossary-service-test`
+- **Endpoint**: `http://98.82.64.9:8080` (static IP, port 8080)
+- **Safe**: Non-production environment
+- **Zero prompts**: Runs completely automated
+- **Includes**: Build → Test → Push → Deploy → Health Check
 
-### `99-deploy-full-ecs-production.sh` ⚠️ **PRODUCTION**
+### `99-deploy-full-ecs-production.sh` ⚠️ **PRODUCTION DEPLOYMENT**
 - **Purpose**: Fully automated production deployment
-- **No prompts**: Runs straight through to completion  
-- **Warning**: Deploys directly to production
-- **Usage**: `./deploy/99-deploy-full-ecs-production.sh`
+- **Target**: ECS Fargate service `glossary-service`
+- **Endpoint**: `http://98.82.64.9` or `http://3.212.111.131` (static IPs, port 80)
+- **Zero-downtime**: Rolling deployment with health checks
+- **Zero prompts**: Runs completely automated
+- **Includes**: Build → Test → Push → Deploy → Health Check
 
-### `99-deploy-full-interactive.sh` 🤔 **INTERACTIVE**
+### `99-deploy-full-interactive.sh` 🤔 **LEGACY INTERACTIVE**
 - **Purpose**: Step-by-step deployment with user prompts
-- **Prompts**: Asks for deployment target and confirmation at each step
-- **Flexible**: Supports both ECS and App Runner deployments
-- **Usage**: `./deploy/99-deploy-full-interactive.sh`
+- **Note**: Still functional but automated scripts are preferred
+- **Usage**: For custom deployment scenarios
 
-## 🚀 Environment-Aware Deployment
+## 🌐 Access and Management Scripts
 
-## Individual Scripts
+### Static IP Access Scripts
+```bash
+./deploy/access-test-static.sh        # Access test environment (port 8080)
+./deploy/access-prod-static.sh        # Access production environment (port 80)
+./deploy/quick-access.sh              # Overview of all endpoints and commands
+```
 
-### 1. Build and Test Locally
+### Infrastructure Management (One-time Setup)
+```bash
+./deploy/setup-nlb-static-ips.sh      # Create Network Load Balancer with static IPs
+./deploy/update-ecs-for-nlb.sh        # Configure ECS services for NLB integration
+```
+
+**Note**: The static IP infrastructure is already deployed. These scripts are for reference or new AWS account setup.
+
+## 🔧 Individual Build Scripts
+
+### Core Pipeline Components
 ```bash
 ./deploy/01-build-and-test.sh
 ```
@@ -190,13 +226,39 @@ The scripts are **smart** and handle both first deployments and updates:
 
 ## Safety Features
 
-- ✅ **Smart deployment** - creates new service first time, updates existing service on subsequent runs
-- ✅ **Rolling updates** - zero downtime deployments for both ECS and App Runner
+- ✅ **Static IP endpoints** - Permanent addresses that never change
+- ✅ **Zero-downtime deployments** - Rolling updates with health checks
 - ✅ **Local testing** before AWS deployment
 - ✅ **Health checks** at each step
 - ✅ **Environment validation** - checks required variables
-- ✅ **Confirmation prompts** for all deployment actions
+- ✅ **Smart deployment** - updates existing services (no duplicates)
 - ✅ **Version tracking** - each deployment tagged with timestamp
+- ✅ **Load balancer integration** - Automatic NLB target group registration
+
+## 📁 Archived Scripts
+
+Scripts moved to `archive/load-balancer-configs/` during cleanup:
+
+### Experimental Load Balancer Scripts (Archived)
+- **ALB attempts**: Scripts that tried to use Application Load Balancer (doesn't support static IPs)
+- **Direct EIP attempts**: Scripts that tried direct Elastic IP association (permission issues)
+- **Various static IP experiments**: Multiple approaches before settling on NLB solution
+
+### Why Archived?
+- **Success**: Network Load Balancer with static IPs works perfectly
+- **Clean workspace**: Removes experimental scripts to focus on working solution
+- **Documentation**: Scripts preserved with README explaining the journey
+
+**Current solution**: Network Load Balancer with static Elastic IPs provides the best combination of performance, reliability, and permanent endpoints.
+
+## 🎯 Production Ready
+
+The current deployment pipeline has been battle-tested with:
+- ✅ **Multiple deployments** without service interruption
+- ✅ **Health monitoring** during deployments
+- ✅ **Rollback capability** via ECS service management
+- ✅ **Static endpoints** for reliable integration
+- ✅ **Cross-zone load balancing** for high availability
 
 ## Troubleshooting
 

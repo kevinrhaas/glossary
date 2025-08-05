@@ -1,27 +1,86 @@
 # AWS Deployment Guide
 
-**🎯 For bulletproof deployment, use the automated deployment scripts in the `deploy/` directory.**
+**🎯 Current Production Solution: ECS Fargate with Static IP Endpoints**
 
-## Quick Deployment
+## 🚀 Static IP Production Deployment (Recommended)
+
+The service is deployed with **permanent static IP addresses** that never change:
+
+**Live Endpoints:**
+- **Production**: `http://98.82.64.9` or `http://3.212.111.131` (port 80)
+- **Test**: `http://98.82.64.9:8080` or `http://3.212.111.131:8080` (port 8080)
+
+### Quick Deployment
 
 ```bash
 # 1. Set up environment
 cp .env.example .env
-# Edit .env with your values
+# Edit .env with your database and API credentials
 
-# 2. Run full deployment pipeline
-./deploy/99-deploy-full.sh
+# 2. Deploy to test environment
+./deploy/99-deploy-full-ecs-test.sh
+
+# 3. Test the deployment
+./deploy/access-test-static.sh
+
+# 4. Deploy to production (after testing)
+./deploy/99-deploy-full-ecs-production.sh
+
+# 5. Access production
+./deploy/access-prod-static.sh
 ```
 
-This runs a complete, tested deployment process with safety checks and rollback capability.
+### Architecture
 
-See `deploy/README.md` for detailed documentation.
+```
+Internet → Static IPs (98.82.64.9, 3.212.111.131) → Network Load Balancer → ECS Fargate Services
+```
 
-## Manual Deployment Steps
+**Benefits:**
+- ✅ **Permanent IPs**: Never change, perfect for integrations
+- ✅ **High Availability**: Multi-AZ with automatic failover
+- ✅ **Zero Downtime**: Rolling deployments with health checks
+- ✅ **Auto Scaling**: Handles traffic spikes automatically
+- ✅ **Monitoring**: CloudWatch integration and health endpoints
 
-If you prefer manual deployment, follow the individual steps below.
+### Infrastructure Setup (One-time)
 
-## Option 1: AWS App Runner (Recommended - Simplest)
+If deploying to a new AWS account, run these once:
+
+```bash
+# 1. Create Network Load Balancer with static IPs
+./deploy/setup-nlb-static-ips.sh
+
+# 2. Configure ECS services to use NLB
+./deploy/update-ecs-for-nlb.sh
+```
+
+**Note**: The static IP infrastructure is already set up in the current AWS account.
+
+### Deployment Scripts
+
+```bash
+# Core deployment commands
+./deploy/99-deploy-full-ecs-test.sh        # Automated test deployment
+./deploy/99-deploy-full-ecs-production.sh  # Automated production deployment
+
+# Access and monitoring
+./deploy/quick-access.sh                   # Show all endpoints and commands
+./deploy/access-test-static.sh             # Test static endpoint
+./deploy/access-prod-static.sh             # Production static endpoint
+
+# Infrastructure management (rarely needed)
+./deploy/setup-nlb-static-ips.sh           # One-time NLB setup
+./deploy/update-ecs-for-nlb.sh             # One-time ECS integration
+```
+
+See `deploy/README.md` for detailed documentation of all deployment scripts.
+
+---
+
+## Alternative Deployment Options
+
+### Option 1: AWS App Runner (Simple, No Static IPs)
 
 AWS App Runner is the easiest way to deploy containerized applications.
 
@@ -265,16 +324,26 @@ Your application uses environment variables for all configuration (12-Factor App
 - `API_KEY` - AI API authentication key
 
 ### Optional Environment Variables (with defaults)
-- `DATABASE_SCHEMA` - Database schema name
+- `DATABASE_SCHEMA` - Database schema name (default: public)
 - `API_DEPLOYMENT_ID` - API deployment ID (default: "model-router")
 - `API_VERSION` - API version (default: "2025-01-01-preview")
 - `API_MAX_TOKENS` - Max response tokens (default: 8192)
-- `API_TEMPERATURE` - AI temperature (default: 0.7)
+- `API_TEMPERATURE` - AI temperature 0-1 (default: 0.7)
 - `API_TIMEOUT` - Request timeout in seconds (default: 60.0)
 - `API_MAX_RETRIES` - Max retry attempts (default: 3)
 - `PORT` - Server port (default: 5000)
 
-**Note:** Prompt templates are now managed in `prompts.json` file instead of environment variables.
+**Note:** Prompt templates are managed in `prompts.json` file, not environment variables.
+
+### Current Version: v2.1-unified-config-static
+
+The service provides comprehensive configuration management:
+- Environment variable overrides with runtime merging
+- Masked sensitive data in configuration endpoints
+- Database connection with multiple provider support
+- API configuration with retry logic and timeouts
+
+Check configuration status: `GET /config`
 
 ### Local Development Setup
 
@@ -312,20 +381,105 @@ For production, set environment variables directly in your deployment platform:
 
 ---
 
-## Monitoring
+## Monitoring and Health Checks
 
-Your service includes these endpoints:
-- `/health` - Health check with database connectivity
-- `/config` - Complete configuration showing sources (environment variables vs defaults)  
-- `/analyze` - POST endpoint for AI-powered glossary generation
-- `/docs` - API documentation
+### Service Endpoints
 
-The `/config` endpoint shows:
-- Which settings come from environment variables vs defaults
-- Masked sensitive values for security  
-- Setup help and required variables
-- Summary of configuration sources
+**Production Static IP Endpoints:**
+- Root: `http://98.82.64.9/` - Service info and version
+- Health: `http://98.82.64.9/health` - Health check with database connectivity
+- Config: `http://98.82.64.9/config` - Configuration status (masked sensitive data)
+- API Docs: `http://98.82.64.9/docs` - Interactive API documentation
+
+**Test Static IP Endpoints:**
+- Root: `http://98.82.64.9:8080/` - Test environment service info
+- Health: `http://98.82.64.9:8080/health` - Test environment health
+- All other endpoints available on port 8080
+
+### Health Monitoring
+
+The `/health` endpoint provides comprehensive status:
+```json
+{
+  "status": "healthy",
+  "timestamp": "2025-08-05T20:00:00Z",
+  "checks": {
+    "service": "ok",
+    "database": "ok"
+  }
+}
+```
+
+**Monitoring Tools:**
+```bash
+# Monitor target group health
+watch -n 5 "curl -s http://98.82.64.9:8080/health | jq '.checks'"
+
+# Check both environments
+./deploy/quick-access.sh
+
+# Monitor deployment progress
+okta-aws khaas ecs describe-services --cluster glossary-cluster --services glossary-service --region us-east-1
+```
+
+### Deployment Monitoring
+
+During deployments, the service:
+1. Builds and tests Docker image locally
+2. Pushes to ECR with versioned tags
+3. Updates ECS service definition
+4. Performs rolling deployment with health checks
+5. Automatically re-registers with Network Load Balancer
+6. Validates new deployment responds correctly
+
+**Zero-downtime guarantee**: Old containers continue serving traffic until new ones pass health checks.
+
+## Security Best Practices
+
+1. **Static IPs**: Permanent endpoints for firewall allowlisting
+2. **Network Load Balancer**: Layer 4 load balancing with AWS security groups
+3. **ECS Fargate**: Serverless containers with automatic patching
+4. **Environment Variables**: All secrets managed via AWS parameter store or environment
+5. **CloudWatch Logging**: Full request/response logging for audit
+6. **Health Checks**: Continuous monitoring of database connectivity
+
+### AWS IAM Requirements
+
+The deployment requires these AWS permissions:
+- ECS: Full access for service management
+- ECR: Push/pull permissions for container registry
+- ELB: Network Load Balancer management
+- EC2: Elastic IP and VPC management
+- CloudWatch: Logging and monitoring
+
+## Troubleshooting
+
+### Common Issues
+
+1. **Service not responding**: Check ECS service status and target group health
+2. **Database connection failures**: Verify DATABASE_URL and security groups
+3. **API failures**: Check API_KEY and API_BASE_URL configuration
+4. **Deployment failures**: Check ECR permissions and Docker image build
+
+### Debug Commands
+
+```bash
+# Check ECS service status
+okta-aws khaas ecs describe-services --cluster glossary-cluster --services glossary-service --region us-east-1
+
+# Check target group health  
+okta-aws khaas elbv2 describe-target-health --target-group-arn arn:aws:elasticloadbalancing:us-east-1:729973546399:targetgroup/glossary-nlb-prod-tg/cbff6d8a86d3550b
+
+# Check CloudWatch logs
+okta-aws khaas logs describe-log-groups --region us-east-1 | grep glossary
+
+# Test local Docker build
+docker build -t glossary-generator:test .
+docker run -p 5000:5000 --env-file .env glossary-generator:test
+```
+
+---
 
 ## Recommendation
 
-**Start with AWS App Runner** - it's the simplest option and handles most of the infrastructure automatically. You can always migrate to ECS or Lambda later if you need more control or different pricing models.
+**Use the automated static IP deployment** - it provides permanent endpoints, high availability, and zero-downtime deployments. The static IPs (`98.82.64.9` and `3.212.111.131`) never change, making them perfect for production integrations and firewall configurations.

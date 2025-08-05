@@ -630,7 +630,7 @@ def home():
     return jsonify({
         "service": "Database Schema Glossary Generator",
         "status": "running",
-        "version": "v2.1-unified-config",
+        "version": "v2.1-unified-config-static",
         "endpoints": [
             "/health - Health check with database connectivity",
             "/config - Complete configuration with sources (env vars vs defaults)",
@@ -724,7 +724,7 @@ def show_config():
 
     return jsonify({
         "service": "Database Schema Glossary Generator",
-        "version": "v2.1-unified-config",
+        "version": "v2.1-unified-config-static",
         "configuration": config_with_sources,
         "summary": {
             "total_settings": len(config_with_sources),

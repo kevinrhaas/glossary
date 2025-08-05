@@ -416,3 +416,152 @@ echo "export ECS_SERVICE_NAME=\"${SERVICE_NAME}\"" >> ${DEPLOYMENT_INFO_FILE}
 echo "export ECS_PUBLIC_IP=\"${PUBLIC_IP}\"" >> ${DEPLOYMENT_INFO_FILE}
 echo "export DEPLOYMENT_TYPE=\"${DEPLOYMENT_TYPE}\"" >> ${DEPLOYMENT_INFO_FILE}
 echo "export ENVIRONMENT=\"${ENVIRONMENT}\"" >> ${DEPLOYMENT_INFO_FILE}
+
+# Auto-assign Elastic IP for consistent access
+assign_elastic_ip_to_task() {
+  local environment=$1
+  local service_name=$2
+  local cluster_name=$3
+  
+  echo ""
+  echo "🔗 Auto-assigning Elastic IP for ${environment} environment..."
+  
+  # Get or create Elastic IP for this environment
+  local tag_name="glossary-${environment}-eip"
+  
+  echo "🔍 Checking for reserved Elastic IP..."
+  ELASTIC_IP=$(aws ec2 describe-addresses \
+    --filters "Name=tag:Name,Values=${tag_name}" \
+    --query 'Addresses[0].PublicIp' \
+    --output text \
+    --region ${AWS_REGION} \
+    ${AWS_PROFILE_ARG} 2>/dev/null || echo "None")
+  
+  ALLOCATION_ID=""
+  if [ "${ELASTIC_IP}" = "None" ] || [ "${ELASTIC_IP}" = "" ]; then
+    echo "🆕 Creating new Elastic IP for ${environment}..."
+    
+    # Allocate new EIP
+    ALLOCATION_RESULT=$(aws ec2 allocate-address \
+      --domain vpc \
+      --region ${AWS_REGION} \
+      ${AWS_PROFILE_ARG})
+    
+    ELASTIC_IP=$(echo ${ALLOCATION_RESULT} | jq -r '.PublicIp')
+    ALLOCATION_ID=$(echo ${ALLOCATION_RESULT} | jq -r '.AllocationId')
+    
+    # Tag the EIP
+    aws ec2 create-tags \
+      --resources ${ALLOCATION_ID} \
+      --tags Key=Name,Value=${tag_name} Key=Environment,Value=${environment} Key=Project,Value=glossary \
+      --region ${AWS_REGION} \
+      ${AWS_PROFILE_ARG}
+    
+    echo "✅ Created Elastic IP: ${ELASTIC_IP}"
+  else
+    echo "✅ Found existing Elastic IP: ${ELASTIC_IP}"
+    
+    # Get allocation ID
+    ALLOCATION_ID=$(aws ec2 describe-addresses \
+      --public-ips ${ELASTIC_IP} \
+      --query 'Addresses[0].AllocationId' \
+      --output text \
+      --region ${AWS_REGION} \
+      ${AWS_PROFILE_ARG})
+  fi
+  
+  echo "📡 Finding ENI of running task..."
+  
+  # Get the ENI ID of the running task
+  TASK_ARN=$(aws ecs list-tasks \
+    --cluster ${cluster_name} \
+    --service-name ${service_name} \
+    --query 'taskArns[0]' \
+    --output text \
+    --region ${AWS_REGION} \
+    ${AWS_PROFILE_ARG})
+  
+  if [ "${TASK_ARN}" = "None" ] || [ "${TASK_ARN}" = "" ]; then
+    echo "❌ Could not find running task for service ${service_name}"
+    return 1
+  fi
+  
+  # Get ENI ID from task
+  ENI_ID=$(aws ecs describe-tasks \
+    --cluster ${cluster_name} \
+    --tasks ${TASK_ARN} \
+    --query 'tasks[0].attachments[0].details[?name==`networkInterfaceId`].value' \
+    --output text \
+    --region ${AWS_REGION} \
+    ${AWS_PROFILE_ARG})
+  
+  if [ "${ENI_ID}" = "None" ] || [ "${ENI_ID}" = "" ]; then
+    echo "❌ Could not find ENI for task"
+    return 1
+  fi
+  
+  echo "📌 Assigning Elastic IP ${ELASTIC_IP} to ENI ${ENI_ID}..."
+  
+  # Check if EIP is already associated somewhere else
+  CURRENT_ASSOCIATION=$(aws ec2 describe-addresses \
+    --allocation-ids ${ALLOCATION_ID} \
+    --query 'Addresses[0].AssociationId' \
+    --output text \
+    --region ${AWS_REGION} \
+    ${AWS_PROFILE_ARG})
+  
+  if [ "${CURRENT_ASSOCIATION}" != "None" ] && [ "${CURRENT_ASSOCIATION}" != "" ]; then
+    echo "🔄 Disassociating EIP from previous instance..."
+    aws ec2 disassociate-address \
+      --association-id ${CURRENT_ASSOCIATION} \
+      --region ${AWS_REGION} \
+      ${AWS_PROFILE_ARG}
+  fi
+  
+  # Associate EIP with the new ENI
+  aws ec2 associate-address \
+    --allocation-id ${ALLOCATION_ID} \
+    --network-interface-id ${ENI_ID} \
+    --region ${AWS_REGION} \
+    ${AWS_PROFILE_ARG}
+  
+  echo "✅ Elastic IP ${ELASTIC_IP} assigned successfully!"
+  echo "🔗 Your service is now available at: http://${ELASTIC_IP}:5000"
+  
+  # Update the deployment info file with the static IP
+  echo "export ECS_CLUSTER_NAME=\"${cluster_name}\"" > ${DEPLOYMENT_INFO_FILE}
+  echo "export ECS_SERVICE_NAME=\"${service_name}\"" >> ${DEPLOYMENT_INFO_FILE}
+  echo "export ECS_PUBLIC_IP=\"${ELASTIC_IP}\"" >> ${DEPLOYMENT_INFO_FILE}
+  echo "export DEPLOYMENT_TYPE=\"${DEPLOYMENT_TYPE}\"" >> ${DEPLOYMENT_INFO_FILE}
+  echo "export ENVIRONMENT=\"${environment}\"" >> ${DEPLOYMENT_INFO_FILE}
+  echo "export ECS_ELASTIC_IP=\"${ELASTIC_IP}\"" >> ${DEPLOYMENT_INFO_FILE}
+  echo "export ECS_ALLOCATION_ID=\"${ALLOCATION_ID}\"" >> ${DEPLOYMENT_INFO_FILE}
+  
+  echo "📝 Updated deployment info with static IP"
+}
+
+# Call the function to assign Elastic IP (will fail gracefully if no permissions)
+# assign_elastic_ip_to_task "${ENVIRONMENT}" "${SERVICE_NAME}" "${CLUSTER_NAME}"
+
+echo ""
+echo "📋 Updating IP documentation for easy access..."
+if [ -f "deploy/document-current-ips.sh" ]; then
+    AWS_PROFILE=${AWS_PROFILE} ./deploy/document-current-ips.sh > /dev/null 2>&1 && echo "✅ IP access tools updated" || echo "⚠️ IP documentation skipped"
+else
+    echo "⚠️ IP documentation script not found"
+fi
+
+echo ""
+echo "🎉 Deployment Complete!"
+echo ""
+echo "🚀 Quick Access:"
+if [ "${ENVIRONMENT}" = "test" ]; then
+    echo "   ./deploy/access-test.sh        - Quick access"
+    echo "   ./deploy/access-test.sh health - Health check"
+    echo "   ./deploy/access-test.sh open   - Open in browser"
+else
+    echo "   ./deploy/access-production.sh  - Quick access"
+    echo "   ./deploy/access-production.sh health - Health check"
+    echo "   ./deploy/access-production.sh open   - Open in browser"
+fi
+echo "   ./deploy/quick-access.sh       - All environments"
