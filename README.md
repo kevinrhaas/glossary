@@ -125,7 +125,38 @@ curl -X POST http://localhost:5000/analyze \
       "max_tokens": 4096
     }
   }'
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "Business Glossary": [
+      {
+        "Customer Management": [
+          "Customer",
+          "Customer Segment",
+          {
+            "Customer Lifecycle": [
+              "Customer Acquisition",
+              "Customer Retention"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "metadata": {
+    "tables_analyzed": 7,
+    "schema_name": "public",
+    "processing_time": 5.2,
+    "ai_model_used": "model-router"
+  }
+}
 ```
+
+
+
 
 ### `POST /generate`
 Transform glossary data into PDC export format with GUIDs and hierarchical relationships
@@ -174,45 +205,6 @@ f1e4d3c2-b1a9-4567-8901-234567890abc,Patient Identification,term,Healthcare Labo
 - **FQDN Paths**: Forward-slash separated fully qualified domain names
 - **Parent-Child Relationships**: `parentId` and `rootId` maintain hierarchy
 - **PDC Compatible**: Direct import into Pentaho Data Catalog
-
-### `POST /analyze`
-Generate business glossary from database schema
-
-**Request:**
-```bash
-curl -X POST http://localhost:5000/analyze \
-  -H "Content-Type: application/json" \
-  -d '{}'
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "data": {
-    "Business Glossary": [
-      {
-        "Customer Management": [
-          "Customer",
-          "Customer Segment",
-          {
-            "Customer Lifecycle": [
-              "Customer Acquisition",
-              "Customer Retention"
-            ]
-          }
-        ]
-      }
-    ]
-  },
-  "metadata": {
-    "tables_analyzed": 7,
-    "schema_name": "public",
-    "processing_time": 5.2,
-    "ai_model_used": "model-router"
-  }
-}
-```
 
 ## Deployment
 
