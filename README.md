@@ -120,11 +120,11 @@ curl -X POST http://localhost:5000/analyze \
 curl -X POST http://localhost:5000/analyze \
   -H "Content-Type: application/json" \
   -d '{
-    "api": {
-      "temperature": 0.3,
-      "max_tokens": 4096
-    }
-  }'
+  "database": {
+    "url": "postgresql://user:pass@host:port/dbname?sslmode=require",
+    "schema": "my_schema"
+  }
+}'
 
 **Response:**
 ```json

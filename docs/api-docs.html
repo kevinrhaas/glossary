@@ -17,16 +17,7 @@
 <body>
     <h1>Database Schema Glossary Generator API</h1>
     <p>Generate AI-powered business glossaries from database schemas and export to PDC-compatible CSV format.</p>
-    
-    <div style="background: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; margin: 15px 0; border-radius: 5px;">
-        <h4>🌐 Current Deployment Architecture</h4>
-        <p><strong>Architecture:</strong> One dedicated EC2 instance per environment</p>
-        <p><strong>Production:</strong> <code>http://[prod-instance-ip]</code> (Private network - requires VPN/internal access)</p>
-        <p><strong>Test:</strong> <code>http://[test-instance-ip]</code> (Dedicated test instance)</p>
-        <p><strong>Health Checks:</strong> <code>http://[instance-ip]/health</code></p>
-        <p><strong>This Documentation:</strong> <code>http://[instance-ip]/docs</code></p>
-        <p><em>Note: All environments run on port 80. Each environment has its own dedicated instance.</em></p>
-    </div>
+
     
     <div class="endpoint">
         <h3><span class="method post">POST</span> /analyze</h3>
@@ -213,32 +204,6 @@ Content-Type: application/json
         <li><strong>API_VERSION</strong> - API version (optional)</li>
         <li><strong>PORT</strong> - Server port (default: 5000)</li>
     </ul>
-
-    <h3>Deployment Architecture</h3>
-    <div style="background: #e9ecef; padding: 15px; border-radius: 5px; margin: 15px 0;">
-        <h4>🏗️ Current Setup</h4>
-        <ul>
-            <li><strong>Platform:</strong> AWS EC2 (t3.small) + Docker</li>
-            <li><strong>Network:</strong> Private VPC (same as RDS database)</li>
-            <li><strong>Instance:</strong> <code>i-022b3f722439d1039</code> @ <code>10.80.230.59</code></li>
-            <li><strong>Container:</strong> <code>glossary-app</code> (port 80 → 5000)</li>
-            <li><strong>Database:</strong> Direct RDS connectivity (airlinesample)</li>
-            <li><strong>Access:</strong> Internal network only (VPN required)</li>
-        </ul>
-        
-        <h4>🔧 Management Commands</h4>
-        <pre># SSH to instance (requires VPN/internal network)
-ssh -i "~/.ssh/pentaho+_se_keypair.pem" ec2-user@10.80.230.59
-
-# Check container status
-docker ps
-
-# View logs  
-docker logs glossary-app
-
-# Deploy updates
-./deploy.sh prod</pre>
-    </div>
 
     <h3>Error Responses</h3>
     <p>All endpoints return error responses in this format:</p>
