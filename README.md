@@ -216,46 +216,49 @@ curl -X POST http://localhost:5000/analyze \
 
 ## Deployment
 
-### 🚀 Production Deployment (Static IP Solution)
+### 🚀 EC2 Deployment (One Instance Per Environment)
 
-This service is deployed on AWS ECS Fargate with **permanent static IP addresses** via Network Load Balancer:
+This service uses a **one-instance-per-environment** architecture with dedicated EC2 instances:
 
-**Live Endpoints:**
-- **Production**: `http://98.82.64.9` or `http://3.212.111.131` (port 80)
-- **Test**: `http://98.82.64.9:8080` or `http://3.212.111.131:8080` (port 8080)
+**Architecture:**
+- **Dedicated Instances**: Each environment (prod, test, dev, staging) gets its own EC2 instance
+- **Network**: Private VPC with direct RDS database connectivity
+- **Consistent Port**: All environments run on port 80 (no port conflicts)
+- **Cost**: ~$15/month per environment (instance + storage)
 
 **Quick Deploy Commands:**
 ```bash
-# Deploy to test environment
-./deploy/99-deploy-full-ecs-test.sh
+# Deploy any environment (creates instance if needed)
+cd deploy/
+./full-deploy.sh prod        # Production environment
+./full-deploy.sh test        # Test environment
+./full-deploy.sh dev         # Development environment
 
-# Deploy to production (after testing)
-./deploy/99-deploy-full-ecs-production.sh
+# Individual deployment steps
+./01-create-ec2-instance.sh [environment]  # Create dedicated instance
+./02-transfer-and-build.sh [environment]   # Transfer code and build
+./03-deploy-app.sh [environment]           # Deploy application
 
-# Quick access helper
-./deploy/quick-access.sh
+# Check status of all environments
+./90-status.sh                              # Show all environment status
+./90-status.sh prod                         # Show specific environment
 ```
 
-**Infrastructure:**
-- **Static IPs**: Two Elastic IPs provide permanent endpoints that never change
-- **Load Balancer**: Network Load Balancer distributes traffic and provides high availability
-- **Auto-scaling**: ECS Fargate automatically handles container scaling and health checks
-- **Zero-downtime**: Deployments automatically re-register with load balancer
+**Current Deployments:**
+- **Production**: `http://[prod-instance-ip]` (example: `http://10.80.230.59`)
+- **Test**: `http://[test-instance-ip]` (example: `http://10.80.230.124`)
+- **Health Checks**: `http://[instance-ip]/health`
+- **SSH Access**: `ssh -i "~/.ssh/pentaho+_se_keypair.pem" ec2-user@[instance-ip]`
 
-### Alternative Deployment Options
+**Infrastructure Benefits:**
+- **Direct RDS Access**: Same VPC as airlinesample database - no network routing issues
+- **Stable IP**: Private IP remains constant unless instance is terminated
+- **Simple Management**: SSH access, Docker containers, standard Linux tools
+- **Cost Effective**: Simple architecture without load balancers or complex networking
 
-For complete deployment documentation including AWS App Runner, Lambda, and manual setup, see `DEPLOYMENT.md`.
+### Alternative Deployments
 
-### Access Tools
-
-```bash
-# Test the static IP endpoints
-./deploy/access-test-static.sh    # Test environment
-./deploy/access-prod-static.sh    # Production environment
-
-# Monitor deployment progress (requires 'watch' command)
-watch -n 5 ./watch-target-health.sh test
-```
+Previous deployment configurations (ECS Fargate, App Runner, etc.) are available in `deploy/archive/` for reference.
 
 ## API Request Options
 

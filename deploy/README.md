@@ -1,296 +1,232 @@
-# Deployment Scripts
+# Deployment Scripts Documentation
 
-This directory contains production-ready deployment scripts for the Database Schema Glossary Generator with **static IP endpoints**.
+## 📁 Script Overview
 
-## 🎯 Current Production Architecture
+### Core Deployment Scripts
 
-**Static IP Endpoints (Never Change):**
-- **Production**: `http://98.82.64.9` or `http://3.212.111.131` (port 80)
-- **Test**: `http://98.82.64.9:8080` or `http://3.212.111.131:8080` (port 8080)
+| Script | Purpose | Usage |
+|--------|---------|-------|
+| `00-full-deploy.sh` | **Complete deployment** - Creates instance + deploys app | `./00-full-deploy.sh [environment]` |
+| `01-create-ec2-instance.sh` | Creates new EC2 instance for environment | `./01-create-ec2-instance.sh [environment]` |
+| `02-transfer-and-build.sh` | Transfers files and builds Docker image | `./02-transfer-and-build.sh [environment]` |
+| `03-deploy-app.sh` | Deploys application to existing instance | `./03-deploy-app.sh [environment]` |
 
-**Infrastructure**: AWS ECS Fargate + Network Load Balancer + Static Elastic IPs
+### Management Scripts
 
-## 🚀 Quick Start - Automated Deployment
+| Script | Purpose | Usage |
+|--------|---------|-------|
+| `00-deploy.sh` | **Quick redeploy** - Updates existing environment | `./00-deploy.sh [environment]` |
+| `90-status.sh` | Check status of environments | `./90-status.sh [environment]` |
+| `99-destroy.sh` | Terminate environment and cleanup | `./99-destroy.sh [environment]` |
 
-### **Recommended Workflow:**
+## 🚀 Common Workflows
 
-1. **Test deployment first:**
-   ```bash
-   ./deploy/99-deploy-full-ecs-test.sh
-   ```
-
-2. **Verify test deployment:**
-   ```bash
-   ./deploy/access-test-static.sh
-   ```
-
-3. **Production deployment after testing:**
-   ```bash
-   ./deploy/99-deploy-full-ecs-production.sh
-   ```
-
-4. **Verify production deployment:**
-   ```bash
-   ./deploy/access-prod-static.sh
-   ```
-
-### **Quick access and overview:**
-   ```bash
-   ./deploy/quick-access.sh  # Shows all endpoints and commands
-   ```
-
-## 🎯 Automated Deployment Scripts
-
-### `99-deploy-full-ecs-test.sh` ✅ **RECOMMENDED FOR TESTING**
-- **Purpose**: Fully automated test environment deployment
-- **Target**: ECS Fargate service `glossary-service-test`
-- **Endpoint**: `http://98.82.64.9:8080` (static IP, port 8080)
-- **Safe**: Non-production environment
-- **Zero prompts**: Runs completely automated
-- **Includes**: Build → Test → Push → Deploy → Health Check
-
-### `99-deploy-full-ecs-production.sh` ⚠️ **PRODUCTION DEPLOYMENT**
-- **Purpose**: Fully automated production deployment
-- **Target**: ECS Fargate service `glossary-service`
-- **Endpoint**: `http://98.82.64.9` or `http://3.212.111.131` (static IPs, port 80)
-- **Zero-downtime**: Rolling deployment with health checks
-- **Zero prompts**: Runs completely automated
-- **Includes**: Build → Test → Push → Deploy → Health Check
-
-### `99-deploy-full-interactive.sh` 🤔 **LEGACY INTERACTIVE**
-- **Purpose**: Step-by-step deployment with user prompts
-- **Note**: Still functional but automated scripts are preferred
-- **Usage**: For custom deployment scenarios
-
-## 🌐 Access and Management Scripts
-
-### Static IP Access Scripts
+### New Environment Setup
 ```bash
-./deploy/access-test-static.sh        # Access test environment (port 8080)
-./deploy/access-prod-static.sh        # Access production environment (port 80)
-./deploy/quick-access.sh              # Overview of all endpoints and commands
+# Create and deploy a new environment (e.g., dev)
+./00-full-deploy.sh dev
 ```
 
-### Infrastructure Management (One-time Setup)
+### Daily Development Workflow
 ```bash
-./deploy/setup-nlb-static-ips.sh      # Create Network Load Balancer with static IPs
-./deploy/update-ecs-for-nlb.sh        # Configure ECS services for NLB integration
+# Make code changes, then quick redeploy
+./00-deploy.sh test
+
+# Check if deployment succeeded
+./90-status.sh test
 ```
 
-**Note**: The static IP infrastructure is already deployed. These scripts are for reference or new AWS account setup.
-
-## 🔧 Individual Build Scripts
-
-### Core Pipeline Components
+### Production Deployment
 ```bash
-./deploy/01-build-and-test.sh
-```
-- Builds Docker image locally
-- Tests the container on port 5001
-- Verifies health and config endpoints
+# 1. Test in test environment first
+./00-deploy.sh test
+./90-status.sh test
 
-### 2. Push to AWS ECR
-```bash
-./deploy/02-push-to-ecr.sh [version]
-```
-- Creates ECR repository if needed
-- Pushes Docker image with version tag and latest
-- Saves image info for next steps
-
-### 3a. Deploy to AWS ECS Fargate
-```bash
-./deploy/03-deploy-to-ecs.sh [environment]
-```
-- **Smart deployment**: Creates new service on first run, updates existing service on subsequent runs
-- **Environment Support**: `test` (default), `staging`, `production`
-- Creates ECS cluster, security group, IAM roles (first time only)
-- **Examples**:
-  - `./deploy/03-deploy-to-ecs.sh` → deploys to test (safe default)
-  - `./deploy/03-deploy-to-ecs.sh production` → deploys to production
-- **Rolling updates**: Updates existing service with zero downtime
-- Sets up CloudWatch logging
-- Returns public IP for testing
-
-### 3b. Deploy to AWS App Runner (Alternative)
-```bash
-./deploy/03-deploy-to-apprunner.sh [environment]
-```
-- **Smart deployment**: Creates new service on first run, updates existing service on subsequent runs
-- **Environment Support**: `test` (default), `staging`, `production`
-- **Rolling updates**: App Runner handles zero-downtime updates automatically
-- Auto-scaling and HTTPS included
-- **Examples**:
-  - `./deploy/03-deploy-to-apprunner.sh` → deploys to test (safe default)
-  - `./deploy/03-deploy-to-apprunner.sh production` → deploys to production
-
-### 4. Test Deployment
-```bash
-./deploy/04-test-deployment.sh
-```
-- Tests all endpoints
-- Verifies database connectivity
-- Checks AI API configuration
-
-### 5. Cleanup Old Services
-```bash
-./deploy/cleanup-old-services.sh
-```
-- Safely removes old ECS service after testing
-- Preserves new deployment
-
-**Recommended Workflow:**
-```bash
-# 1. Deploy to test environment first (safe default)
-./deploy/03-deploy-to-ecs.sh
-
-# 2. Test your application thoroughly
-
-# 3. Deploy to production when ready
-./deploy/03-deploy-to-ecs.sh production
+# 2. If test passes, deploy to production
+./00-deploy.sh prod
+./90-status.sh prod
 ```
 
-### 🎯 Environment Options
+## 🌐 Network Access & Current Deployments
 
-**Test Environment:**
-- ECS Service: `glossary-service-test`
-- App Runner: `glossary-apprunner-test`
-- Safe for experimentation
+**All instances are in private VPC:**
+- **Network**: Same VPC as RDS database (`vpc-095f761a169c10b8e`)
+- **Access**: Requires VPN or internal network connectivity
+- **SSH**: Uses `pentaho+_se_keypair.pem` key
+- **Ports**: All applications run on port 80
 
-**Production Environment:**
-- ECS Service: `glossary-service`
-- App Runner: `glossary-apprunner`
-- Live user-facing services
-
-### 📋 Manual Deployment (Advanced)
-
+**Get Current Deployment Info:**
 ```bash
-# Direct deployment with environment parameter
-./deploy/03-deploy-to-ecs.sh [environment]
-./deploy/03-deploy-to-apprunner.sh [environment]
-
-# Valid environments: production, test
+# See all current deployments with IPs and status
+./90-status.sh
 ```
 
-## 🔧 Setup
-
+### Environment Management Examples
 ```bash
-# 1. Set up your environment
-cp .env.example .env
-# Edit .env with your actual values
+# Standard environments
+./99-destroy.sh prod
+./99-destroy.sh test
+./99-destroy.sh dev
+./99-destroy.sh staging
 
-# 2. Run the full deployment pipeline (production)
-./deploy/99-deploy-full.sh
+# Custom environments
+./99-destroy.sh feature-auth
+./99-destroy.sh v2-beta
+./99-destroy.sh hotfix-123
+
+# Clean up everything
+./99-cleanup.sh all
+```
+- **Security Group**: `sg-0eef78e9e17193950` (same as PDC servers)
+- **Instance IP**: `10.80.230.59` (stable private IP)
+- **Database Access**: Direct connectivity to `airlinesample.cyj079bqebpx.us-west-2.rds.amazonaws.com`
+
+## Quick Start
+
+### Initial Setup (One-time)
+```bash
+# 1. Create EC2 instance in RDS VPC
+./01-create-ec2-instance.sh prod
+
+# 2. Transfer files and build Docker image
+./02-transfer-and-build.sh prod
+
+# 3. Deploy the application
+./03-deploy-app.sh prod prod
 ```
 
+### Application Access
+```bash
+# SSH access (requires VPN or network connectivity)
+ssh -i "~/.ssh/pentaho+_se_keypair.pem" ec2-user@10.80.230.59
 
+# Application URLs (internal network)
+Production: http://10.80.230.59
+Test: http://10.80.230.59:8080
+Health Check: http://10.80.230.59/health
+```
+
+## Deployment Scripts
+
+### Core Deployment
+- **`01-create-ec2-instance.sh`** - Creates EC2 instance in RDS VPC
+- **`02-transfer-and-build.sh`** - Transfers code and builds Docker image
+- **`03-deploy-app.sh`** - Deploys application (prod or test environment)
+
+### Management
+- **`90-status.sh`** - Check instance and application status
+- **`99-cleanup.sh`** - Clean up resources when done
+
+### Optional
+- **`02-allocate-elastic-ip.sh`** - Not applicable (private VPC)
+- **`README-local-build.md`** - Local development instructions
+
+## Daily Development Workflow
+
+### Code Updates
+```bash
+# 1. Update application code locally
+# 2. Transfer and rebuild
+./02-transfer-and-build.sh prod
+
+# 3. Deploy production
+./03-deploy-app.sh prod prod
+
+# 4. Deploy test (optional)
+./03-deploy-app.sh prod test
+```
+
+### Environment Management
+```bash
+# Check status
+./90-status.sh prod
+
+# SSH for debugging
+ssh -i "~/.ssh/pentaho+_se_keypair.pem" ec2-user@10.80.230.59
+
+# View logs
+docker logs glossary-app           # Production
+docker logs glossary-app-test      # Test
+
+# Restart services
+docker restart glossary-app        # Production
+docker restart glossary-app-test   # Test
+```
 
 ## Configuration
 
-The scripts use your `.env` file for configuration. Required variables:
+### Environment Variables
+The application uses the standard `.env` file for configuration:
+- Database connection to Neon PostgreSQL (default)
+- API endpoints for OpenAI services
+- All standard application settings
 
+### Database Testing
+To test with different databases (like airlinesample), update the `.env` file on the instance:
 ```bash
-DATABASE_URL=postgresql://user:pass@host:port/db?sslmode=require
-API_BASE_URL=your-endpoint.azure-api.net/openai-presales
-API_KEY=your-api-key
-DATABASE_SCHEMA=your_schema  # optional
+# SSH to instance
+ssh -i "~/.ssh/pentaho+_se_keypair.pem" ec2-user@10.80.230.59
+
+# Update database configuration
+cd /home/ec2-user/app
+cp .env .env.backup
+# Edit .env with new DATABASE_URL and DATABASE_SCHEMA
+
+# Restart application
+docker restart glossary-app
 ```
 
-## AWS Configuration
+## Network Requirements
 
-Ensure AWS credentials are configured:
+### VPN/Network Access
+This deployment requires VPN or internal network access to:
+- SSH to the instance (10.80.230.59)
+- Access the web application
+- Perform management tasks
 
-```bash
-# Option 1: AWS CLI
-aws configure
+### Security Groups
+The instance uses the same security group as PDC servers (`sg-0eef78e9e17193950`) which provides:
+- SSH access (port 22)
+- HTTP access (port 80)
+- Custom ports (8080)
+- Database connectivity to RDS
 
-# Option 2: Okta/SSO
-gimme-aws-creds --profile your-profile
+## Cost and Scaling
 
-# Verify
-aws sts get-caller-identity
-```
+### Monthly Costs (~$15)
+- EC2 t3.small instance: ~$15/month
+- EBS storage (8GB): ~$1/month
+- No additional load balancer or NAT gateway costs
 
-## Deployment Strategy
-
-The scripts are **smart** and handle both first deployments and updates:
-
-### **First Deployment:**
-- ECS: Creates `glossary-service` (cluster, security group, IAM roles, etc.)
-- App Runner: Creates `glossary-apprunner`
-
-### **Subsequent Deployments:**
-- ECS: Updates existing `glossary-service` with **rolling deployment** (zero downtime)
-- App Runner: Updates existing `glossary-apprunner` with **rolling deployment** (zero downtime)
-
-**No more creating new services every time!** The scripts detect if a service exists and update it intelligently.
-
-## Safety Features
-
-- ✅ **Static IP endpoints** - Permanent addresses that never change
-- ✅ **Zero-downtime deployments** - Rolling updates with health checks
-- ✅ **Local testing** before AWS deployment
-- ✅ **Health checks** at each step
-- ✅ **Environment validation** - checks required variables
-- ✅ **Smart deployment** - updates existing services (no duplicates)
-- ✅ **Version tracking** - each deployment tagged with timestamp
-- ✅ **Load balancer integration** - Automatic NLB target group registration
-
-## 📁 Archived Scripts
-
-Scripts moved to `archive/load-balancer-configs/` during cleanup:
-
-### Experimental Load Balancer Scripts (Archived)
-- **ALB attempts**: Scripts that tried to use Application Load Balancer (doesn't support static IPs)
-- **Direct EIP attempts**: Scripts that tried direct Elastic IP association (permission issues)
-- **Various static IP experiments**: Multiple approaches before settling on NLB solution
-
-### Why Archived?
-- **Success**: Network Load Balancer with static IPs works perfectly
-- **Clean workspace**: Removes experimental scripts to focus on working solution
-- **Documentation**: Scripts preserved with README explaining the journey
-
-**Current solution**: Network Load Balancer with static Elastic IPs provides the best combination of performance, reliability, and permanent endpoints.
-
-## 🎯 Production Ready
-
-The current deployment pipeline has been battle-tested with:
-- ✅ **Multiple deployments** without service interruption
-- ✅ **Health monitoring** during deployments
-- ✅ **Rollback capability** via ECS service management
-- ✅ **Static endpoints** for reliable integration
-- ✅ **Cross-zone load balancing** for high availability
+### Scaling Options
+- **Vertical**: Increase instance size (t3.medium, t3.large)
+- **Horizontal**: Create additional instances in different AZs
+- **Load Balancing**: Add ALB for production workloads
 
 ## Troubleshooting
 
-### Build Fails
-- Check Dockerfile and requirements.txt
-- Ensure `.env` file has required variables
+### Common Issues
+```bash
+# Check instance status
+./90-status.sh prod
 
-### ECR Push Fails  
-- Check AWS credentials: `aws sts get-caller-identity`
-- Verify region settings
+# SSH connection issues
+# Verify VPN connection and network access to 10.80.230.59
 
-### ECS Deploy Fails
-- Check VPC/subnet configuration
-- Verify IAM permissions
-- Check CloudWatch logs: `/ecs/glossary-v2`
+# Application not responding
+ssh -i "~/.ssh/pentaho+_se_keypair.pem" ec2-user@10.80.230.59
+docker ps                    # Check container status
+docker logs glossary-app     # View application logs
+```
 
-### App Runner Deploy Fails
-- Check ECR image URI
-- Verify environment variables
-- Check App Runner service logs in AWS Console
+### Database Connectivity
+```bash
+# Test database connection from instance
+ssh -i "~/.ssh/pentaho+_se_keypair.pem" ec2-user@10.80.230.59
+timeout 10 bash -c '</dev/tcp/airlinesample.cyj079bqebpx.us-west-2.rds.amazonaws.com/5432'
+echo $?  # 0 = success, 1 = failed
+```
 
-## Generated Files
+## Archive
 
-The scripts create these files:
-- `deploy/image-info.env` - ECR image URIs and version
-- `deploy/deployment-info.env` - ECS deployment details  
-- `deploy/apprunner-deployment-info.env` - App Runner details
-
-## Clean Deployment Process
-
-1. **Test locally** with Docker
-2. **Push to ECR** with versioning
-3. **Deploy to AWS** with new service name
-4. **Test production** endpoints
-5. **Clean up old** services (optional)
+Previous deployment configurations (ECS, App Runner, etc.) have been moved to the `archive/` directory for reference.

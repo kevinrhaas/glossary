@@ -1,15 +1,5 @@
 # AWS Deployment Guide
 
-**🎯 Current Production Solution: ECS Fargate with Static IP Endpoints**
-
-## 🚀 Static IP Production Deployment (Recommended)
-
-The service is deployed with **permanent static IP addresses** that never change:
-
-**Live Endpoints:**
-- **Production**: `http://98.82.64.9` or `http://3.212.111.131` (port 80)
-- **Test**: `http://98.82.64.9:8080` or `http://3.212.111.131:8080` (port 8080)
-
 ### Quick Deployment
 
 ```bash
@@ -17,68 +7,75 @@ The service is deployed with **permanent static IP addresses** that never change
 cp .env.example .env
 # Edit .env with your database and API credentials
 
-# 2. Deploy to test environment
-./deploy/99-deploy-full-ecs-test.sh
+# 2. Deploy any environment (creates instance if needed)
+./deploy/00-full-deploy.sh test        # Create and deploy test environment
+./deploy/00-full-deploy.sh prod        # Create and deploy production environment
+./deploy/00-full-deploy.sh dev         # Create and deploy development environment
 
-# 3. Test the deployment
-./deploy/access-test-static.sh
+# 3. Check status of all environments
+./deploy/90-status.sh
 
-# 4. Deploy to production (after testing)
-./deploy/99-deploy-full-ecs-production.sh
-
-# 5. Access production
-./deploy/access-prod-static.sh
+# Access environments (use ./90-status.sh to get current IPs)
+# Production: http://[prod-instance-ip]
+# Test: http://[test-instance-ip]
 ```
-
-### Architecture
-
-```
-Internet → Static IPs (98.82.64.9, 3.212.111.131) → Network Load Balancer → ECS Fargate Services
-```
-
-**Benefits:**
-- ✅ **Permanent IPs**: Never change, perfect for integrations
-- ✅ **High Availability**: Multi-AZ with automatic failover
-- ✅ **Zero Downtime**: Rolling deployments with health checks
-- ✅ **Auto Scaling**: Handles traffic spikes automatically
-- ✅ **Monitoring**: CloudWatch integration and health endpoints
-
-### Infrastructure Setup (One-time)
-
-If deploying to a new AWS account, run these once:
-
-```bash
-# 1. Create Network Load Balancer with static IPs
-./deploy/setup-nlb-static-ips.sh
-
-# 2. Configure ECS services to use NLB
-./deploy/update-ecs-for-nlb.sh
-```
-
-**Note**: The static IP infrastructure is already set up in the current AWS account.
 
 ### Deployment Scripts
 
 ```bash
-# Core deployment commands
-./deploy/99-deploy-full-ecs-test.sh        # Automated test deployment
-./deploy/99-deploy-full-ecs-production.sh  # Automated production deployment
+# Full deployment (creates instance if needed)
+./deploy/00-full-deploy.sh [environment]          # Complete deployment
 
-# Access and monitoring
-./deploy/quick-access.sh                   # Show all endpoints and commands
-./deploy/access-test-static.sh             # Test static endpoint
-./deploy/access-prod-static.sh             # Production static endpoint
+# Individual steps
+./deploy/01-create-ec2-instance.sh [environment]   # Create EC2 instance
+./deploy/02-transfer-and-build.sh [environment]    # Transfer files and build image
+./deploy/03-deploy-app.sh [environment]            # Deploy application
 
-# Infrastructure management (rarely needed)
-./deploy/setup-nlb-static-ips.sh           # One-time NLB setup
-./deploy/update-ecs-for-nlb.sh             # One-time ECS integration
+# Management commands
+./deploy/90-status.sh [environment]                # Check environment status
+./deploy/00-deploy.sh [environment]                   # Quick redeploy (existing instance)
+./deploy/99-destroy.sh [environment]               # Terminate environment (any name: prod, test, dev, staging, feature-branch, etc.)
 ```
 
-See `deploy/README.md` for detailed documentation of all deployment scripts.
+### Environment Examples
+```bash
+# Standard environments
+./deploy/99-destroy.sh prod
+./deploy/99-destroy.sh test
+./deploy/99-destroy.sh staging
+
+# Custom environments  
+./deploy/99-destroy.sh feature-auth
+./deploy/99-destroy.sh v2-beta
+./deploy/99-destroy.sh all          # Terminate all environments
+```
+
+### Environment Configuration
+
+Each environment gets:
+- **Dedicated EC2 Instance**: t3.small (2GB RAM, 2 vCPUs)
+- **Instance Configuration**: Amazon Linux 2023 with Docker
+- **Networking**: Private VPC with RDS database connectivity
+- **Storage**: 8GB gp3 EBS volume
+- **Security**: SSH key access, security group with web ports
+- **Application**: Docker container running on port 80
+
+### SSH Access
+
+```bash
+# SSH to any environment (get current IPs with ./90-status.sh)
+ssh -i "~/.ssh/pentaho+_se_keypair.pem" ec2-user@[instance-ip]
+
+# Examples (use actual IPs from status command):
+# ssh -i "~/.ssh/pentaho+_se_keypair.pem" ec2-user@10.80.230.59   # Production example
+# ssh -i "~/.ssh/pentaho+_se_keypair.pem" ec2-user@10.80.230.124  # Test example
+```
 
 ---
 
-## Alternative Deployment Options
+## Legacy Deployment Options (Archived)
+
+Previous deployment configurations (ECS Fargate, App Runner, etc.) are available in `deploy/archive/` for reference.
 
 ### Option 1: AWS App Runner (Simple, No Static IPs)
 

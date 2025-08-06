@@ -2,12 +2,14 @@
 .env
 .env.local
 .env.production
+.env.rds*
 config.json
 config.local.json
 
 # Deployment state files (auto-generated)
 deploy/deployment-info-*.env
 deploy/apprunner-deployment-info-*.env
+deploy/instance-info-*.env
 deploy/image-info.env
 
 # Python
