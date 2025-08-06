@@ -1,6 +1,6 @@
 #!/bin/bash
-# 99-destroy.sh
-# Destroy EC2 resources when no longer needed
+# 99-cleanup.sh
+# Clean up EC2 resources when no longer needed
 
 set -e
 
@@ -15,7 +15,7 @@ fi
 ENVIRONMENT=${1:-""}  # Can specify any environment name, or leave empty to see options
 
 if [ -z "$ENVIRONMENT" ]; then
-    echo "🔥 EC2 Destroy Utility"
+    echo "🧹 EC2 Cleanup Utility"
     echo ""
     echo "Available instances:"
     
@@ -33,30 +33,30 @@ if [ -z "$ENVIRONMENT" ]; then
     echo ""
     echo "Usage: $0 [environment|all]"
     echo "Examples:"
-    echo "  $0 test      # Destroy test environment"
-    echo "  $0 prod      # Destroy production environment"
-    echo "  $0 dev       # Destroy development environment"
-    echo "  $0 staging   # Destroy staging environment"
-    echo "  $0 all       # Destroy all environments"
+    echo "  $0 test      # Clean up test environment"
+    echo "  $0 prod      # Clean up production environment"
+    echo "  $0 dev       # Clean up development environment"
+    echo "  $0 staging   # Clean up staging environment"
+    echo "  $0 all       # Clean up all environments"
     exit 0
 fi
 
-# Function to destroy environment
-destroy_environment() {
+# Function to cleanup environment
+cleanup_environment() {
     local env=$1
     
     # Determine script directory to find instance files
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     
     if [ ! -f "${SCRIPT_DIR}/instance-info-${env}.env" ]; then
-        echo "❌ No instance-info-${env}.env found. Nothing to destroy for ${env}."
+        echo "❌ No instance-info-${env}.env found. Nothing to clean up for ${env}."
         return
     fi
 
     # Source instance info
     source "${SCRIPT_DIR}/instance-info-${env}.env"
 
-    echo "🔥 Destroying ${env} environment..."
+    echo "🧹 Cleaning up ${env} environment..."
     echo "Instance: ${INSTANCE_ID}"
     echo "IP Address: ${PRIVATE_IP:-${PUBLIC_IP:-${ELASTIC_IP:-'None'}}}"
     echo ""
@@ -74,6 +74,15 @@ destroy_environment() {
     okta-aws khaas ec2 wait instance-terminated --region ${REGION} --instance-ids ${INSTANCE_ID}
     echo "✅ Instance terminated"
 
+    # Release Elastic IP if it exists
+    if [ -n "${ALLOCATION_ID:-}" ]; then
+        echo "💰 Releasing Elastic IP..."
+        okta-aws khaas ec2 release-address \
+            --region ${REGION} \
+            --allocation-id ${ALLOCATION_ID}
+        echo "✅ Elastic IP released"
+    fi
+
     # NOTE: Security group is shared with PDC servers - DO NOT DELETE
     echo "🛡️ Security group is shared resource - keeping ${SECURITY_GROUP_ID}"
 
@@ -82,21 +91,22 @@ destroy_environment() {
     rm -f "${SCRIPT_DIR}/instance-info-${env}.env"
 
     echo ""
-    echo "🎉 ${env} environment destruction completed!"
+    echo "🎉 ${env} environment cleanup completed!"
     echo ""
     echo "🗑️  RESOURCES DELETED:"
     echo "   ✅ EC2 Instance: ${INSTANCE_ID}"
+    echo "   ✅ Elastic IP: ${ELASTIC_IP:-'None'}"
     echo "   ⚠️  Security Group: ${SECURITY_GROUP_ID} (kept - shared resource)"
     echo "   ✅ Local config file"
 }
 
 # Validate environment
 if [ "$ENVIRONMENT" = "all" ]; then
-    echo "⚠️  This will PERMANENTLY DELETE ALL EC2 instances."
+    echo "⚠️  This will PERMANENTLY DELETE ALL EC2 instances and release ALL Elastic IPs."
     read -p "Continue? (y/N): " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "Destruction cancelled."
+        echo "Cleanup cancelled."
         exit 0
     fi
     
@@ -107,7 +117,7 @@ if [ "$ENVIRONMENT" = "all" ]; then
     for env_file in "${SCRIPT_DIR}"/instance-info-*.env; do
         if [ -f "$env_file" ]; then
             ENV_NAME=$(basename "$env_file" | sed 's/instance-info-//; s/.env//')
-            destroy_environment "$ENV_NAME" 2>/dev/null || echo "Failed to destroy $ENV_NAME environment"
+            cleanup_environment "$ENV_NAME" 2>/dev/null || echo "Failed to clean up $ENV_NAME environment"
         fi
     done
 else
@@ -119,13 +129,13 @@ else
         exit 1
     fi
     
-    echo "⚠️  This will PERMANENTLY DELETE the ${ENVIRONMENT} EC2 instance."
+    echo "⚠️  This will PERMANENTLY DELETE the ${ENVIRONMENT} EC2 instance and release the Elastic IP."
     read -p "Continue? (y/N): " -n 1 -r
     echo
     if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-        echo "Destruction cancelled."
+        echo "Cleanup cancelled."
         exit 0
     fi
     
-    destroy_environment "$ENVIRONMENT"
+    cleanup_environment "$ENVIRONMENT"
 fi

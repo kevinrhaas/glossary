@@ -446,7 +446,7 @@ The deployment requires these AWS permissions:
 - ECS: Full access for service management
 - ECR: Push/pull permissions for container registry
 - ELB: Network Load Balancer management
-- EC2: Elastic IP and VPC management
+- EC2: VPC management
 - CloudWatch: Logging and monitoring
 
 ## Troubleshooting
